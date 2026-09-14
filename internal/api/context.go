@@ -4,6 +4,8 @@
 package api
 
 import (
+	"net/http"
+	"net/http/httputil"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +22,8 @@ import (
 type ElectorInfo interface {
 	IsLeader() bool
 	Identity() (leaderID, clusterName string)
+	GetNodeID() string
+	Peers() []string
 }
 
 // Deps carries everything handlers need; fields stay nil on single-node
@@ -29,7 +33,9 @@ type Deps struct {
 	DB      *gorm.DB
 	Cfg     config.Settings
 	RC      *rclone.Client
+	RCProxy *httputil.ReverseProxy
 	Sched   *scheduler.Service
+	Static  http.FileSystem
 	Elector func() ElectorInfo
 }
 

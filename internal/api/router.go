@@ -25,7 +25,21 @@ func NewRouter(d *Deps) *gin.Engine {
 	registerSystemSettings(r, d)
 	registerTasks(r, d)
 	registerRuns(r, d)
+	registerProxy(r, d)
+
+	r.GET("/healthz", d.Healthz)
+
+	// Static/SPA last (dev disk mode; release builds pass an embed.FS).
+	MountStatic(r, d.Static)
 	return r
+}
+
+func registerProxy(r *gin.Engine, d *Deps) {
+	if d.RCProxy == nil {
+		return
+	}
+	r.Any("/rclone", append([]gin.HandlerFunc{d.RequireAuth(), d.ProxyMethodGate()}, ProxyTo(d.RCProxy))...)
+	r.Any("/rclone/*path", append([]gin.HandlerFunc{d.RequireAuth(), d.ProxyMethodGate()}, ProxyTo(d.RCProxy))...)
 }
 
 func registerTasks(r *gin.Engine, d *Deps) {

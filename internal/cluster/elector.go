@@ -71,6 +71,10 @@ func (e *LeaderElector) IsLeader() bool {
 	return e.isLeader
 }
 
+// GetNodeID returns this node's identity (method form for the api.ElectorInfo
+// interface; the NodeID field stays the canonical storage).
+func (e *LeaderElector) GetNodeID() string { return e.NodeID }
+
 // Identity returns (leaderID, clusterName) for the 503 gate body.
 func (e *LeaderElector) Identity() (leaderID, clusterName string) {
 	e.mu.Lock()
