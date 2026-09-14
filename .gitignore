@@ -1,21 +1,24 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-.env
+# Go
+/rclone-sync
 *.db
+*.db-shm
+*.db-wal
 rcd.log
 *.pid
+
+# Python (legacy build artifacts)
+__pycache__/
+*.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.coverage
 vendor/
-requirements.txt
-requirements-runtime.txt
-# keep the embed placeholder while ignoring built assets
+
+# Node
+node_modules/
+web/dist/
 !web/dist/.gitkeep
 
-# Go build output
-/rclone-sync
+# Env / misc
+.env
+.DS_Store
