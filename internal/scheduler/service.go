@@ -44,8 +44,8 @@ type Service struct {
 	schedulerStarted bool
 }
 
-// New builds the service (not yet started).
-func New(db *gorm.DB, cfg config.Settings, execTask TaskExec, execCheck CheckExec) (*Service, error) {
+// New builds the service (not yet started). rc drives the run-poll jobs.
+func New(db *gorm.DB, rc *rclone.Client, cfg config.Settings, execTask TaskExec, execCheck CheckExec) (*Service, error) {
 	mon := NewMonitor()
 	sched, err := gocron.NewScheduler(
 		gocron.WithLocation(time.UTC),
@@ -64,6 +64,7 @@ func New(db *gorm.DB, cfg config.Settings, execTask TaskExec, execCheck CheckExe
 	return &Service{
 		sched:     sched,
 		db:        db,
+		rc:        rc,
 		cfg:       cfg,
 		mon:       mon,
 		execTask:  execTask,

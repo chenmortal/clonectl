@@ -114,9 +114,13 @@ func (e *LeaderElector) Join() error {
 
 // HeartbeatTick refreshes liveness; if leader, extends the lease. A failed
 // extension (rowcount == 0) means we lost the lease — drop leadership.
+// Callbacks fire AFTER the transaction commits: with SQLite capped at one
+// connection, a callback that queries the DB from inside the tx would
+// deadlock on the pool.
 func (e *LeaderElector) HeartbeatTick() {
 	defer e.recoverPanic("heartbeat tick")
 	now := database.NowUTC()
+	fireLost := false
 	err := e.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(
 			"UPDATE cluster_nodes SET last_heartbeat = ? WHERE node_id = ?",
@@ -135,19 +139,25 @@ func (e *LeaderElector) HeartbeatTick() {
 			}
 			if res.RowsAffected == 0 {
 				slog.Warn("lease heartbeat failed (no longer owner); releasing leadership", "node", e.NodeID)
-				e.setLeaderState(false)
+				fireLost = true
 			}
 		}
 		return nil
 	})
 	if err != nil {
 		slog.Error("LeaderElector heartbeat failed", "err", err)
+		return
+	}
+	if fireLost {
+		e.setLeaderState(false)
 	}
 }
 
 // ElectTick claims leadership when the lease is unowned or expired.
 func (e *LeaderElector) ElectTick() {
 	defer e.recoverPanic("elect tick")
+	fireAcquired := false
+	fireLost := false
 	err := e.db.Transaction(func(tx *gorm.DB) error {
 		var lease database.LeaderLease
 		if err := tx.First(&lease, "cluster_name = ?", e.ClusterName).Error; err != nil {
@@ -162,7 +172,7 @@ func (e *LeaderElector) ElectTick() {
 			e.leaderID = lease.LeaderNodeID
 			if e.isLeader && (lease.LeaderNodeID == nil || *lease.LeaderNodeID != e.NodeID) {
 				e.mu.Unlock()
-				e.setLeaderState(false)
+				fireLost = true
 				return nil
 			}
 			e.mu.Unlock()
@@ -185,12 +195,19 @@ func (e *LeaderElector) ElectTick() {
 				return err
 			}
 			slog.Info("acquired leadership", "node", e.NodeID, "epoch", lease.Epoch+1)
-			e.setLeaderState(true)
+			fireAcquired = true
 		}
 		return nil
 	})
 	if err != nil {
 		slog.Error("LeaderElector elect tick failed", "err", err)
+		return
+	}
+	if fireAcquired {
+		e.setLeaderState(true)
+	}
+	if fireLost {
+		e.setLeaderState(false)
 	}
 }
 
