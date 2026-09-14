@@ -63,14 +63,14 @@ func (User) TableName() string { return "users_v2" }
 // --- storage sources / data sources ---
 
 type StorageSource struct {
-	ID        int64       `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name      string      `gorm:"size:128;uniqueIndex;not null" json:"name"`
-	Type      string      `gorm:"size:64;not null" json:"type"`
-	Endpoint  *string     `gorm:"size:512" json:"endpoint"`
-	Region    *string     `gorm:"size:64" json:"region"`
-	Extra     JSONObject  `gorm:"not null" json:"extra"`
-	CreatedAt time.Time   `json:"created_at"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	ID        int64      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name      string     `gorm:"size:128;uniqueIndex;not null" json:"name"`
+	Type      string     `gorm:"size:64;not null" json:"type"`
+	Endpoint  *string    `gorm:"size:512" json:"endpoint"`
+	Region    *string    `gorm:"size:64" json:"region"`
+	Extra     JSONObject `gorm:"not null" json:"extra"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 func (StorageSource) TableName() string { return "storage_sources_v2" }
@@ -93,12 +93,12 @@ type DataSource struct {
 func (DataSource) TableName() string { return "data_sources_v2" }
 
 type DataSourceBinding struct {
-	ID              int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	DataSourceID    int64      `gorm:"not null;index;uniqueIndex:idx_binding_ds_user,priority:1" json:"data_source_id"`
-	UserID          int64      `gorm:"not null;index;uniqueIndex:idx_binding_ds_user,priority:2" json:"user_id"`
-	Permission      string     `gorm:"size:16;not null" json:"permission"`
-	CreatedByUserID *int64     `json:"created_by_user_id"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID              int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	DataSourceID    int64     `gorm:"not null;index;uniqueIndex:idx_binding_ds_user,priority:1" json:"data_source_id"`
+	UserID          int64     `gorm:"not null;index;uniqueIndex:idx_binding_ds_user,priority:2" json:"user_id"`
+	Permission      string    `gorm:"size:16;not null" json:"permission"`
+	CreatedByUserID *int64    `json:"created_by_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 func (DataSourceBinding) TableName() string { return "data_source_bindings_v2" }

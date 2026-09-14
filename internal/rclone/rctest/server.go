@@ -34,7 +34,7 @@ type Server struct {
 	list      []map[string]any           // canned list result
 	copyFails []failure                  // queued /operations/copyfile failures
 	delFails  []failure                  // queued /operations/deletefile failures
-	versionOK bool                      // whether /core/version answers 200
+	versionOK bool                       // whether /core/version answers 200
 }
 
 type failure struct {

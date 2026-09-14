@@ -23,7 +23,7 @@ func Open(dialect, dsn string) (*gorm.DB, error) {
 	}
 
 	db, err := gorm.Open(dial, &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
+		Logger:  logger.Default.LogMode(logger.Warn),
 		NowFunc: func() time.Time { return time.Now().UTC() },
 	})
 	if err != nil {
