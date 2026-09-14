@@ -75,6 +75,18 @@ rclone-sync status           检查 rcd / 服务 / 集群状态
 rclone-sync migrate-legacy   旧 Python 表 → 新 *_v2 表（幂等，不改旧表）
 ```
 
+`serve` 支持覆盖监听地址；所有子命令支持指定配置文件：
+
+```bash
+# 指定配置文件 + 监听地址（host:port / :port / 纯端口）
+rclone-sync --config /etc/rclone-sync/prod.env serve --bind 127.0.0.1:8000
+rclone-sync --config /etc/rclone-sync/prod.env serve --bind :8000
+rclone-sync --config /etc/rclone-sync/prod.env serve --bind 8000
+```
+
+> `--config` 缺省读取工作目录的 `.env`；显式指定的文件不存在会直接报错。
+> 真实环境变量始终优先于配置文件中的同名键。
+
 ## API 一览
 
 完整接口文档见 [docs/api.md](docs/api.md)（以 Python 版接口为基线，字段与状态码保持兼容）。

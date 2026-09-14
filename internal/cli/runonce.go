@@ -18,7 +18,10 @@ var runOnceCmd = &cobra.Command{
 	Short: "立即执行指定任务一次（不经调度器）",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := loadConfig()
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
 		setupLogging(cfg)
 
 		var taskID int64

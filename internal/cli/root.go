@@ -4,6 +4,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -22,6 +23,14 @@ var rootCmd = &cobra.Command{
 	Short: "rclone periodic sync service",
 }
 
+// configPath is bound to the persistent --config flag.
+var configPath string
+
+func init() {
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "",
+		"配置文件路径（默认读取 ./.env；显式指定但文件不存在时报错）")
+}
+
 // SetVersion wires the release version (injected via -ldflags at build time)
 // into cobra's built-in --version flag.
 func SetVersion(v string) {
@@ -36,9 +45,18 @@ func Execute() {
 	}
 }
 
-func loadConfig() config.Settings {
-	_ = godotenv.Load() // missing .env is fine
-	return config.Load()
+// loadConfig reads the --config file when given (missing file is an error),
+// otherwise the default .env (missing .env is fine). Real environment
+// variables always take precedence over file values.
+func loadConfig() (config.Settings, error) {
+	if configPath != "" {
+		if err := godotenv.Load(configPath); err != nil {
+			return config.Settings{}, fmt.Errorf("读取配置文件 %s 失败: %w", configPath, err)
+		}
+	} else {
+		_ = godotenv.Load() // missing .env is fine
+	}
+	return config.Load(), nil
 }
 
 func setupLogging(cfg config.Settings) {

@@ -15,7 +15,11 @@ var stopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "停止主服务与被管的 rclone rcd",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		stopPIDFile(loadConfig().PIDFile, "rclone-sync service", 15*time.Second)
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		stopPIDFile(cfg.PIDFile, "rclone-sync service", 15*time.Second)
 		stopPIDFile("rcd.pid", "rclone rcd", 10*time.Second)
 		return nil
 	},

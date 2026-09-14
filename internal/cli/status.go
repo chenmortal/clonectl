@@ -17,7 +17,10 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "检查 rclone rcd 进程与主服务运行状态",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := loadConfig()
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
 
 		// rclone rcd via RC API probe.
 		manager := rclone.NewManager(

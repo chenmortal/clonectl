@@ -14,7 +14,10 @@ var migrateLegacyCmd = &cobra.Command{
 	Use:   "migrate-legacy",
 	Short: "把旧版（Python）数据库表拷贝到新 *_v2 表（幂等，不改旧表）",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := loadConfig()
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
 
 		dialect, dsn, err := config.ParseDatabaseURL(cfg.DatabaseURL)
 		if err != nil {
