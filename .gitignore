@@ -14,3 +14,5 @@ rcd.log
 vendor/
 requirements.txt
 requirements-runtime.txt
+# keep the embed placeholder while ignoring built assets
+!web/dist/.gitkeep

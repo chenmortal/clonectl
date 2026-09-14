@@ -15,6 +15,7 @@ import (
 
 	"gorm.io/gorm"
 
+	rclone_sync "rclone_sync"
 	"rclone_sync/internal/auth"
 	"rclone_sync/internal/cluster"
 	"rclone_sync/internal/config"
@@ -172,7 +173,7 @@ func (a *App) Start() error {
 	// 12. HTTP server.
 	static := DiskStaticFS(cfg.StaticDir) // dev override; embed used when nil
 	if static == nil {
-		static = EmbeddedStatic() // nil until the release build embeds web/dist
+		static = rclone_sync.EmbeddedStatic() // release embed; nil with placeholder-only dist
 	}
 	deps := &Deps{
 		DB: db, Cfg: cfg, RC: rc, RCProxy: proxy, Sched: sched, Static: static,
@@ -220,8 +221,3 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 	slog.Info("rclone-sync stopped")
 }
-
-// EmbeddedStatic serves the release-embedded SPA. Overridden by the release
-// build wiring (internal/web); nil during development → API-only unless
-// STATIC_DIR points at a built frontend.
-var EmbeddedStatic = func() http.FileSystem { return nil }
