@@ -115,8 +115,11 @@ func TestNotifyRunFailureAndResolved(t *testing.T) {
 	NotifySyncRunResolved(db, okRun)
 	require.Len(t, payloads, 2)
 	assert.Equal(t, "resolved", payloads[1]["status"])
-	require.NoError(t, db.First(run, run.ID).Error)
-	assert.Nil(t, run.NotifiedAt, "cleared so next failure fires fresh")
+	// Reload into a FRESH struct: GORM's First does not overwrite a non-nil
+	// pointer field with a NULL column value on an already-populated struct.
+	var reloaded database.SyncRun
+	require.NoError(t, db.First(&reloaded, run.ID).Error)
+	assert.Nil(t, reloaded.NotifiedAt, "cleared so next failure fires fresh")
 
 	// Success with no prior notified failure sends nothing.
 	okRun2 := &database.SyncRun{TaskID: task.ID, Status: database.RunSuccess,

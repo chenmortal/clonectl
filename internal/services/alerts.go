@@ -197,7 +197,9 @@ func NotifySyncRunResolved(db *gorm.DB, run *database.SyncRun) {
 		"resolved", map[string]string{"alertname": "SyncTaskFailed"}, true, nowPtr())
 	sent, _, _ := PostToAlertmanager(url, payload)
 	prev.NotifiedAt = nil
-	db.Save(prev)
+	if err := db.Save(prev).Error; err != nil {
+		slog.Error("alertmanager: clear notified_at failed", "err", err)
+	}
 	if sent {
 		slog.Info("alertmanager notified: resolved", "run", run.ID, "task", task.ID, "closes", prev.ID)
 	}
@@ -225,7 +227,9 @@ func NotifyCheckRunResolved(db *gorm.DB, run *database.CheckRun) {
 		"resolved", map[string]string{"alertname": "CheckTaskFailed"}, false, nowPtr())
 	sent, _, _ := PostToAlertmanager(url, payload)
 	prev.NotifiedAt = nil
-	db.Save(prev)
+	if err := db.Save(prev).Error; err != nil {
+		slog.Error("alertmanager: clear notified_at failed", "err", err)
+	}
 	if sent {
 		slog.Info("alertmanager notified: resolved", "check", run.ID, "task", task.ID, "closes", prev.ID)
 	}
