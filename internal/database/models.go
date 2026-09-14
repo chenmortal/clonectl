@@ -125,7 +125,7 @@ type SyncTask struct {
 	DstPath         string     `gorm:"size:512;not null" json:"dst_path"`
 	Mode            string     `gorm:"size:16;not null" json:"mode"`
 	Cron            string     `gorm:"size:128;not null" json:"cron"`
-	Enabled         bool       `gorm:"not null;default:true" json:"enabled"`
+	Enabled         bool       `gorm:"not null" json:"enabled"`
 	RcloneOptions   JSONObject `gorm:"not null" json:"rclone_options"`
 	PreCheckTaskID  *int64     `json:"pre_check_task_id"`
 	CreatedAt       time.Time  `json:"created_at"`
@@ -142,7 +142,7 @@ type CheckTask struct {
 	DstDataSourceID int64      `gorm:"not null;index" json:"dst_data_source_id"`
 	DstPath         string     `gorm:"size:512;not null" json:"dst_path"`
 	Cron            *string    `gorm:"size:128" json:"cron"`
-	Enabled         bool       `gorm:"not null;default:true" json:"enabled"`
+	Enabled         bool       `gorm:"not null" json:"enabled"`
 	CheckOptions    JSONObject `gorm:"not null" json:"check_options"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
