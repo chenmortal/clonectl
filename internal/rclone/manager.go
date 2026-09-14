@@ -87,7 +87,7 @@ func (m *Manager) Start(waitTimeout time.Duration) error {
 	)
 	cmd.Stdout = log
 	cmd.Stderr = log
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // detached process group
+	cmd.SysProcAttr = detachedProcAttr()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start rclone rcd: %w", err)
 	}

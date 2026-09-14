@@ -22,3 +22,6 @@ web/dist/
 # Env / misc
 .env
 .DS_Store
+
+# Release artifacts
+dist/

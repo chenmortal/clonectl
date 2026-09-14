@@ -22,6 +22,13 @@ var rootCmd = &cobra.Command{
 	Short: "rclone periodic sync service",
 }
 
+// SetVersion wires the release version (injected via -ldflags at build time)
+// into cobra's built-in --version flag.
+func SetVersion(v string) {
+	rootCmd.Version = v
+	rootCmd.SetVersionTemplate("rclone-sync {{.Version}}\n")
+}
+
 // Execute runs the CLI.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
