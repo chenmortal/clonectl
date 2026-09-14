@@ -26,8 +26,8 @@ func newTestService(t *testing.T, db *gorm.DB) (*Service, *[]int64, *[]int64) {
 	t.Helper()
 	var tasks, checks []int64
 	s, err := New(db, nil, config.Settings{PollInterval: 10, HeartbeatInterval: 3},
-		func(id int64) { tasks = append(tasks, id) },
-		func(id int64) { checks = append(checks, id) })
+		func(id int64) *int64 { tasks = append(tasks, id); return nil },
+		func(id int64) *int64 { checks = append(checks, id); return nil })
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Shutdown() })
 	return s, &tasks, &checks
@@ -205,8 +205,10 @@ func TestMonitorTracksJobState(t *testing.T) {
 	assert.Len(t, st.Executions, 2)
 	assert.Equal(t, "boom", st.Executions[1].Error)
 
-	// Unknown job → zero state.
-	assert.Equal(t, JobState{}, m.State(mustUUID(t, "99999999-1111-2222-3333-444455556666")))
+	// Unknown job → empty state with a non-nil executions slice.
+	unknown := m.State(mustUUID(t, "99999999-1111-2222-3333-444455556666"))
+	assert.Empty(t, unknown.Executions)
+	assert.NotNil(t, unknown.Executions, "renders as [] not null")
 }
 
 func TestSnapshotMergesGocronAndMonitor(t *testing.T) {
@@ -259,14 +261,14 @@ func TestRunUserJobNow(t *testing.T) {
 	snap := s.Snapshot()
 	require.Len(t, snap, 1)
 
-	k, ok := s.RunUserJobNow(snap[0].ID)
+	k, _, ok := s.RunUserJobNow(snap[0].ID)
 	require.True(t, ok)
 	assert.Equal(t, "task", k.Kind)
 	require.Len(t, *tasks, 1)
 	assert.Equal(t, tk.ID, (*tasks)[0])
 
 	// Unknown id → false
-	_, ok = s.RunUserJobNow("not-a-uuid")
+	_, _, ok = s.RunUserJobNow("not-a-uuid")
 	assert.False(t, ok)
 }
 

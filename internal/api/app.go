@@ -130,15 +130,21 @@ func (a *App) Start() error {
 
 	// 9. Scheduler (leader-gated user jobs).
 	sched, err := scheduler.New(db, rc, cfg,
-		func(taskID int64) {
-			if _, err := services.RunTask(db, rc, cfg.CheckTimeout, taskID, database.TriggerSchedule); err != nil {
+		func(taskID int64) *int64 {
+			run, err := services.RunTask(db, rc, cfg.CheckTimeout, taskID, database.TriggerSchedule)
+			if err != nil {
 				slog.Error("scheduled task failed", "id", taskID, "err", err)
+				return nil
 			}
+			return &run.ID
 		},
-		func(checkID int64) {
-			if _, err := services.RunCheck(db, rc, checkID, database.TriggerSchedule); err != nil {
+		func(checkID int64) *int64 {
+			check, err := services.RunCheck(db, rc, checkID, database.TriggerSchedule)
+			if err != nil {
 				slog.Error("scheduled check failed", "id", checkID, "err", err)
+				return nil
 			}
+			return &check.ID
 		})
 	if err != nil {
 		return err

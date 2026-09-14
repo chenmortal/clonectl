@@ -1,3 +1,7 @@
+> **版本说明**：后端已从 Python 重写为 Go（gin + gocron）。本文档描述的
+> REST 契约保持兼容（路径/字段/状态码/错误体）；差异：新增
+> `/api/scheduler/*` 调度监控端点，未知 `/api/*` 路径返回 JSON 404。
+
 # rclone-sync 对外 API 文档
 
 版本：0.1.0 · Base URL：`http://<host>:8000` · Content-Type：`application/json` · 字符集：UTF-8

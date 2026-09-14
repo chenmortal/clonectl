@@ -101,13 +101,15 @@ func (s *JobState) push(e Execution) {
 }
 
 // State returns a copy of the recorded state (zero value when unseen).
+// Executions is always non-nil so JSON renders [] rather than null.
 func (m *Monitor) State(jobID uuid.UUID) JobState {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if s, ok := m.jobs[jobID]; ok {
 		cp := *s
-		cp.Executions = append([]Execution(nil), s.Executions...)
+		cp.Executions = make([]Execution, len(s.Executions))
+		copy(cp.Executions, s.Executions)
 		return cp
 	}
-	return JobState{}
+	return JobState{Executions: []Execution{}}
 }

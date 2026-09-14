@@ -1,5 +1,6 @@
 import {
   AuditOutlined,
+  DashboardOutlined,
   CloudServerOutlined,
   DatabaseOutlined,
   FolderOpenOutlined,
@@ -40,6 +41,7 @@ import CheckTasks from "./pages/CheckTasks";
 import DataSources from "./pages/DataSources";
 import Login from "./pages/Login";
 import Runs from "./pages/Runs";
+import SchedulerMonitor from "./pages/SchedulerMonitor";
 import StorageSources from "./pages/StorageSources";
 import Storages from "./pages/Storages";
 import SystemSettings from "./pages/SystemSettings";
@@ -125,6 +127,7 @@ function Layout_() {
     { key: "/data-sources", icon: <FolderOpenOutlined />, label: "数据源" },
     { key: "/tasks", icon: <ScheduleOutlined />, label: "同步任务" },
     { key: "/check-tasks", icon: <AuditOutlined />, label: "检查任务" },
+    { key: "/scheduler", icon: <DashboardOutlined />, label: "调度监控" },
     { key: "/runs", icon: <CloudServerOutlined />, label: "监控与记录" },
     { key: "/storages", icon: <DatabaseOutlined />, label: "存储（旧版）" },
     ...(me_?.role === "admin"
@@ -223,6 +226,7 @@ function Layout_() {
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/check-tasks" element={<CheckTasks />} />
               <Route path="/runs" element={<Runs />} />
+              <Route path="/scheduler" element={<SchedulerMonitor />} />
               <Route path="/users" element={<Users />} />
             </Routes>
           </Content>

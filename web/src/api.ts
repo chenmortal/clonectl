@@ -309,3 +309,73 @@ export const getCheck = (id: number) =>
   http.get<CheckDetail>(`/api/checks/${id}`).then((r) => r.data);
 
 export const healthz = () => http.get<HealthOut>("/healthz").then((r) => r.data);
+
+// ---------------------------------------------------------------------------
+// Scheduler monitoring (gocron-based)
+// ---------------------------------------------------------------------------
+
+export interface SchedulerJob {
+  id: string;
+  name: string;
+  kind: "task" | "check" | "internal";
+  task_id: number | null;
+  tags: string[];
+  schedule: string;
+  next_run: string | null;
+  last_run_started_at: string | null;
+  last_run_completed_at: string | null;
+  is_running: boolean;
+  last_error: string;
+  run_count: number;
+  fail_count: number;
+  consecutive_failures: number;
+}
+
+export interface SchedulerJobExecution {
+  started_at: string;
+  duration_ms: number;
+  error: string;
+}
+
+export interface SchedulerJobDetail extends SchedulerJob {
+  next_runs: string[];
+  executions: SchedulerJobExecution[];
+}
+
+export interface SchedulerJobsOut {
+  node_id: string;
+  is_leader: boolean;
+  scheduler_running: boolean;
+  jobs: SchedulerJob[];
+  note: string;
+}
+
+export interface SchedulerOverview {
+  is_leader: boolean;
+  leader_id: string | null;
+  node_id: string;
+  cluster_name: string;
+  jobs_total: number;
+  user_jobs: number;
+  running_now: number;
+}
+
+export interface SchedulerRunNowOut {
+  job_id: string;
+  kind: "task" | "check";
+  task_id: number | null;
+  run_id?: number;
+  check_id?: number;
+}
+
+export const listSchedulerJobs = () =>
+  http.get<SchedulerJobsOut>("/api/scheduler/jobs").then((r) => r.data);
+
+export const getSchedulerJob = (id: string) =>
+  http.get<SchedulerJobDetail>(`/api/scheduler/jobs/${id}`).then((r) => r.data);
+
+export const runSchedulerJob = (id: string) =>
+  http.post<SchedulerRunNowOut>(`/api/scheduler/jobs/${id}/run`).then((r) => r.data);
+
+export const schedulerOverview = () =>
+  http.get<SchedulerOverview>("/api/scheduler/overview").then((r) => r.data);

@@ -19,11 +19,13 @@ import (
 	"rclone_sync/internal/services"
 )
 
-// TaskExec runs one sync task (wired to services.RunTask with schedule trigger).
-type TaskExec func(taskID int64)
+// TaskExec runs one sync task, returning the created run id (or nil).
+// Wired to services.RunTask with the schedule trigger; RunNow uses the same
+// path and captures the id for the monitor API response.
+type TaskExec func(taskID int64) *int64
 
-// CheckExec runs one check task.
-type CheckExec func(checkID int64)
+// CheckExec runs one check task, returning the created check id (or nil).
+type CheckExec func(checkID int64) *int64
 
 // Service owns the single gocron scheduler and the leader gate.
 type Service struct {
@@ -109,6 +111,9 @@ func (s *Service) isLeader() bool {
 	defer s.mu.RUnlock()
 	return s.leader
 }
+
+// IsLeaderPublic exposes the gate state for the monitor API.
+func (s *Service) IsLeaderPublic() bool { return s.isLeader() }
 
 // --- cron validation (parity with Python parse_cron: exactly 5 fields) ---
 
@@ -442,22 +447,30 @@ func (s *Service) JobByID(id string) (JobView, bool) {
 
 // RunUserJobNow manually triggers a registered user job's payload through
 // the service layer (NOT job.RunNow — callers need the run row and the
-// concurrency guard; see the plan).
-func (s *Service) RunUserJobNow(jobID string) (TaskIDKind, bool) {
+// concurrency guard). Returns the job kind and the run/check id.
+func (s *Service) RunUserJobNow(jobID string) (TaskIDKind, *int64, bool) {
 	for _, j := range s.sched.Jobs() {
 		if j.ID().String() != jobID {
 			continue
 		}
 		k := kindFromName(j.Name())
 		if k.Kind == "internal" || k.TaskID == nil {
-			return k, false
+			return k, nil, false
 		}
 		if k.Kind == "task" {
-			s.execTask(*k.TaskID)
-		} else {
-			s.execCheck(*k.TaskID)
+			return k, s.execTask(*k.TaskID), true
 		}
-		return k, true
+		return k, s.execCheck(*k.TaskID), true
+	}
+	return TaskIDKind{}, nil, false
+}
+
+// KindByID resolves a job id without running anything.
+func (s *Service) KindByID(jobID string) (TaskIDKind, bool) {
+	for _, j := range s.sched.Jobs() {
+		if j.ID().String() == jobID {
+			return kindFromName(j.Name()), true
+		}
 	}
 	return TaskIDKind{}, false
 }

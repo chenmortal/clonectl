@@ -25,6 +25,7 @@ func NewRouter(d *Deps) *gin.Engine {
 	registerSystemSettings(r, d)
 	registerTasks(r, d)
 	registerRuns(r, d)
+	registerScheduler(r, d)
 	registerProxy(r, d)
 
 	r.GET("/healthz", d.Healthz)
@@ -69,6 +70,14 @@ func registerRuns(r *gin.Engine, d *Deps) {
 	g.GET("/api/runs/:run_id", d.GetSyncRun)
 	g.GET("/api/checks", d.ListCheckRuns)
 	g.GET("/api/checks/:check_id", d.GetCheckRun)
+}
+
+func registerScheduler(r *gin.Engine, d *Deps) {
+	g := r.Group("/api/scheduler", d.RequireAuth(), d.RequireRoles(allRoles()...))
+	g.GET("/jobs", d.ListSchedulerJobs)
+	g.GET("/jobs/:job_id", d.GetSchedulerJob)
+	g.GET("/overview", d.SchedulerOverview)
+	g.POST("/jobs/:job_id/run", d.RequireLeader(), d.RequireRoles(database.RoleEdit, database.RoleAdmin), d.RunSchedulerJob)
 }
 
 func registerAuth(r *gin.Engine, d *Deps) {
