@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.env
+*.db
+rcd.log
+*.pid
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+vendor/
+requirements.txt
+requirements-runtime.txt

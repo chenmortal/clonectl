@@ -1,0 +1,51 @@
+[project]
+name = "rclone-sync"
+version = "0.1.0"
+description = "Periodic object storage sync service driven by rclone rcd"
+authors = [{ name = "chenshiming" }]
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "typer>=0.12",
+    "sqlalchemy>=2.0,<3.0",
+    "apscheduler>=3.10,<4.0",
+    "httpx>=0.27",
+    "pydantic-settings>=2.3",
+    "pymysql>=1.1",
+    "bcrypt>=4.0",
+    "pyjwt>=2.8",
+]
+
+[tool.poetry]
+packages = [{ include = "app" }]
+
+[tool.poetry.scripts]
+rclone-sync = "cli:cli"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+ruff = ">=0.5"
+mypy = ">=1.10"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:Using .httpx. with .starlette.testclient.",
+]
