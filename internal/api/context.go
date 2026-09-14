@@ -12,6 +12,7 @@ import (
 	"rclone_sync/internal/config"
 	"rclone_sync/internal/database"
 	"rclone_sync/internal/rclone"
+	"rclone_sync/internal/scheduler"
 )
 
 // ElectorInfo is the HA leadership view the API needs. Implemented by
@@ -23,11 +24,12 @@ type ElectorInfo interface {
 
 // Deps carries everything handlers need; fields stay nil on single-node
 // deployments or before later subsystems start (nil elector = HA off,
-// nil RC = verify/trigger endpoints 503).
+// nil RC = verify/trigger endpoints 503, nil Sched = schedule not applied).
 type Deps struct {
 	DB      *gorm.DB
 	Cfg     config.Settings
 	RC      *rclone.Client
+	Sched   *scheduler.Service
 	Elector func() ElectorInfo
 }
 

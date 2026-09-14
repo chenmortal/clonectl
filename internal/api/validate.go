@@ -30,8 +30,8 @@ func (v *Validator) add(field, msg, typ string) {
 // StrOpt tunes Str validation.
 type StrOpt struct {
 	Required    bool
-	Min         int // -1 → no min
-	Max         int // -1 → no max
+	Min         int // ≤ 0 → no min
+	Max         int // ≤ 0 → no max
 	Pattern     *regexp.Regexp
 	PatternDesc string
 }
@@ -45,10 +45,10 @@ func (v *Validator) Str(field, val string, o StrOpt) string {
 	if val == "" {
 		return val
 	}
-	if o.Min >= 0 && len(val) < o.Min {
+	if o.Min > 0 && len(val) < o.Min {
 		v.add(field, msgAtLeast(o.Min), "string_too_short")
 	}
-	if o.Max >= 0 && len(val) > o.Max {
+	if o.Max > 0 && len(val) > o.Max {
 		v.add(field, msgAtMost(o.Max), "string_too_long")
 	}
 	if o.Pattern != nil && !o.Pattern.MatchString(val) {

@@ -23,7 +23,38 @@ func NewRouter(d *Deps) *gin.Engine {
 	registerDataSources(r, d)
 	registerStorages(r, d)
 	registerSystemSettings(r, d)
+	registerTasks(r, d)
+	registerRuns(r, d)
 	return r
+}
+
+func registerTasks(r *gin.Engine, d *Deps) {
+	write := func(h gin.HandlerFunc) []gin.HandlerFunc {
+		return []gin.HandlerFunc{d.RequireLeader(), d.RequireRoles(database.RoleEdit, database.RoleAdmin), h}
+	}
+	tasks := r.Group("/api/tasks", d.RequireAuth(), d.RequireRoles(allRoles()...))
+	tasks.GET("", d.ListTasks)
+	tasks.POST("", write(d.CreateTask)...)
+	tasks.GET("/:task_id", d.GetTask)
+	tasks.PUT("/:task_id", write(d.UpdateTask)...)
+	tasks.DELETE("/:task_id", write(d.DeleteTask)...)
+	tasks.POST("/:task_id/trigger", d.RequireRoles(database.RoleEdit, database.RoleAdmin), d.TriggerTask)
+
+	checks := r.Group("/api/check-tasks", d.RequireAuth(), d.RequireRoles(allRoles()...))
+	checks.GET("", d.ListCheckTasks)
+	checks.POST("", write(d.CreateCheckTask)...)
+	checks.GET("/:check_task_id", d.GetCheckTask)
+	checks.PUT("/:check_task_id", write(d.UpdateCheckTask)...)
+	checks.DELETE("/:check_task_id", write(d.DeleteCheckTask)...)
+	checks.POST("/:check_task_id/trigger", d.RequireRoles(database.RoleEdit, database.RoleAdmin), d.TriggerCheckTask)
+}
+
+func registerRuns(r *gin.Engine, d *Deps) {
+	g := r.Group("", d.RequireAuth(), d.RequireRoles(allRoles()...))
+	g.GET("/api/runs", d.ListSyncRuns)
+	g.GET("/api/runs/:run_id", d.GetSyncRun)
+	g.GET("/api/checks", d.ListCheckRuns)
+	g.GET("/api/checks/:check_id", d.GetCheckRun)
 }
 
 func registerAuth(r *gin.Engine, d *Deps) {

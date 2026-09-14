@@ -135,5 +135,3 @@ func TestNotifyRunFailureAndResolved(t *testing.T) {
 	NotifySyncRunFailure(db, sk)
 	assert.Len(t, payloads, 2)
 }
-
-func strPtr(s string) *string { return &s }

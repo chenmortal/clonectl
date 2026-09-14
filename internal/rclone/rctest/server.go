@@ -27,14 +27,15 @@ type Server struct {
 	records  []Record
 	jobidSeq int64
 
-	failNext  map[string][]failure       // path → one-shot queued failures
-	jobStatus map[int64][]map[string]any // jobid → queued responses (FIFO)
-	jobStats  map[int64]map[string]any   // jobid → canned stats
-	listFails []failure                  // queued /operations/list failures
-	list      []map[string]any           // canned list result
-	copyFails []failure                  // queued /operations/copyfile failures
-	delFails  []failure                  // queued /operations/deletefile failures
-	versionOK bool                       // whether /core/version answers 200
+	failNext         map[string][]failure       // path → one-shot queued failures
+	jobStatus        map[int64][]map[string]any // jobid → queued responses (FIFO)
+	defaultJobStatus map[string]any             // fallback for jobids without a queue
+	jobStats         map[int64]map[string]any   // jobid → canned stats
+	listFails        []failure                  // queued /operations/list failures
+	list             []map[string]any           // canned list result
+	copyFails        []failure                  // queued /operations/copyfile failures
+	delFails         []failure                  // queued /operations/deletefile failures
+	versionOK        bool                       // whether /core/version answers 200
 }
 
 type failure struct {
@@ -100,6 +101,8 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		if len(queue) > 0 {
 			resp = queue[0]
 			s.jobStatus[id] = queue[1:]
+		} else if s.defaultJobStatus != nil {
+			resp = s.defaultJobStatus
 		} else {
 			resp = FinishedSuccess(id)
 		}
@@ -204,11 +207,21 @@ func (s *Server) FailNext(path string, status int, body map[string]any) {
 }
 
 // QueueJobStatus pushes canned /job/status responses for jobid (FIFO).
-// When the queue empties, calls default to FinishedSuccess.
+// When the queue empties, calls fall back to defaultJobStatus, then to
+// FinishedSuccess.
 func (s *Server) QueueJobStatus(jobid int64, responses ...map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.jobStatus[jobid] = append(s.jobStatus[jobid], responses...)
+}
+
+// SetDefaultJobStatus pins the response for ANY jobid without a queue
+// (the per-jobid queue takes precedence). Lets tests drive jobs whose ids
+// are assigned mid-flow (e.g. pre-checks created inside RunTask).
+func (s *Server) SetDefaultJobStatus(resp map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.defaultJobStatus = resp
 }
 
 // SetJobStats pins the /core/stats body for group job/{jobid}.

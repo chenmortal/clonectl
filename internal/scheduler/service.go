@@ -16,6 +16,7 @@ import (
 	"rclone_sync/internal/config"
 	"rclone_sync/internal/database"
 	"rclone_sync/internal/rclone"
+	"rclone_sync/internal/services"
 )
 
 // TaskExec runs one sync task (wired to services.RunTask with schedule trigger).
@@ -37,9 +38,9 @@ type Service struct {
 	heartbeatFn func() // cluster hooks, optional
 	electFn     func()
 
-	mu         sync.RWMutex
-	leader     bool
-	schedules  map[string]string // job name → human schedule string
+	mu               sync.RWMutex
+	leader           bool
+	schedules        map[string]string // job name → human schedule string
 	schedulerStarted bool
 }
 
@@ -124,10 +125,10 @@ func ValidateCron(expr string) error {
 
 // --- job identity helpers ---
 
-func taskJobName(id int64) string        { return fmt.Sprintf("task-%d", id) }
-func checkJobName(id int64) string       { return fmt.Sprintf("checktask-%d", id) }
-func taskTag(id int64) string            { return fmt.Sprintf("task-%d", id) }
-func checkTag(id int64) string           { return fmt.Sprintf("checktask-%d", id) }
+func taskJobName(id int64) string  { return fmt.Sprintf("task-%d", id) }
+func checkJobName(id int64) string { return fmt.Sprintf("checktask-%d", id) }
+func taskTag(id int64) string      { return fmt.Sprintf("task-%d", id) }
+func checkTag(id int64) string     { return fmt.Sprintf("checktask-%d", id) }
 
 func isUserJobName(name string) bool {
 	return strings.HasPrefix(name, "task-") || strings.HasPrefix(name, "checktask-")
@@ -324,10 +325,9 @@ func (s *Service) Shutdown() error {
 	return s.sched.Shutdown()
 }
 
-// poll placeholders — replaced by the services package wiring (slice 7);
-// they only touch the DB when runs actually exist.
-func pollRunningRuns(db *gorm.DB, rc *rclone.Client)    {}
-func pollRunningChecks(db *gorm.DB, rc *rclone.Client)  {}
+// Poll wiring — the poll jobs call into the services package.
+func pollRunningRuns(db *gorm.DB, rc *rclone.Client)   { services.PollRunningRuns(db, rc) }
+func pollRunningChecks(db *gorm.DB, rc *rclone.Client) { services.PollRunningChecks(db, rc) }
 
 // --- monitor views ---
 
@@ -383,10 +383,10 @@ func (s *Service) Snapshot() []JobView {
 	out := make([]JobView, 0)
 	for _, j := range s.sched.Jobs() {
 		v := JobView{
-			ID:       j.ID().String(),
-			Name:     j.Name(),
-			Tags:     j.Tags(),
-			Schedule: s.scheduleOf(j.Name()),
+			ID:        j.ID().String(),
+			Name:      j.Name(),
+			Tags:      j.Tags(),
+			Schedule:  s.scheduleOf(j.Name()),
 			IsRunning: isRunning(j),
 		}
 		k := kindFromName(j.Name())
