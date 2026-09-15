@@ -78,8 +78,7 @@ func (a *App) Start() error {
 	var manager *rclone.Manager
 	if cfg.RcloneManaged {
 		manager = rclone.NewManager(
-			rclone.RCNormal(cfg.RcloneRCURL), cfg.RcloneRCAddr,
-			cfg.RcloneRCUser, cfg.RcloneRCPass, cfg.RcloneBin)
+			cfg.RcloneRCAddr, cfg.RcloneRCUser, cfg.RcloneRCPass, cfg.RcloneBin)
 		manager.WebGUI = cfg.RcloneWebGUI
 		if err := manager.Start(30 * time.Second); err != nil {
 			return err
@@ -87,14 +86,25 @@ func (a *App) Start() error {
 	}
 	a.Manager = manager
 
+	// From here on, a failed startup step must tear the detached rcd back
+	// down — Setpgid means it would otherwise survive us as a PPID-1 orphan.
+	// started flips once the HTTP server exits cleanly (its graceful stop
+	// already owns cleanup via App.Shutdown).
+	started := false
+	defer func() {
+		if !started && a.Manager != nil {
+			a.Manager.Stop()
+		}
+	}()
+
 	// 5. rclone client + proxy.
-	rc := rclone.NewClient(cfg.RcloneRCURL, cfg.RcloneRCUser, cfg.RcloneRCPass, 30*time.Second)
+	rc := rclone.NewClient(rclone.RCNormal(cfg.RcloneRCAddr), cfg.RcloneRCUser, cfg.RcloneRCPass, 30*time.Second)
 	a.RC = rc
 	var proxy *httputil.ReverseProxy
 	{
-		u, perr := url.Parse(cfg.RcloneRCURL)
+		u, perr := url.Parse(rclone.RCNormal(cfg.RcloneRCAddr))
 		if perr != nil {
-			return fmt.Errorf("RCLONE_RC_URL: %w", perr)
+			return fmt.Errorf("RCLONE_RC_ADDR: %w", perr)
 		}
 		proxy = NewRcloneProxy(u, cfg.RcloneRCUser, cfg.RcloneRCPass)
 	}
@@ -201,6 +211,7 @@ func (a *App) Start() error {
 	if err := a.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+	started = true // graceful stop owns cleanup (App.Shutdown)
 	return nil
 }
 

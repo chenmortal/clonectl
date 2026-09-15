@@ -10,7 +10,7 @@ import (
 func TestLoadDefaults(t *testing.T) {
 	s := Load()
 	assert.Equal(t, "sqlite:///./rclone_sync.db", s.DatabaseURL)
-	assert.Equal(t, "http://localhost:5572", s.RcloneRCURL)
+	assert.Equal(t, "0.0.0.0:5572", s.RcloneRCAddr)
 	assert.Equal(t, "admin", s.RcloneRCUser)
 	assert.Equal(t, "6051", s.RcloneRCPass)
 	assert.True(t, s.RcloneManaged)

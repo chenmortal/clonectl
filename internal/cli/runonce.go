@@ -40,7 +40,7 @@ var runOnceCmd = &cobra.Command{
 		sqlDB, _ := db.DB()
 		defer sqlDB.Close()
 
-		client := rclone.NewClient(cfg.RcloneRCURL, cfg.RcloneRCUser, cfg.RcloneRCPass, 30*time.Second)
+		client := rclone.NewClient(rclone.RCNormal(cfg.RcloneRCAddr), cfg.RcloneRCUser, cfg.RcloneRCPass, 30*time.Second)
 		defer client.Close()
 
 		run, err := services.RunTask(db, client, cfg.CheckTimeout, taskID, "manual")
