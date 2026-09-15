@@ -386,6 +386,7 @@ type JobView struct {
 
 // Snapshot lists all jobs with their monitor state.
 func (s *Service) Snapshot() []JobView {
+	busySync, busyCheck := s.activeRunIDs()
 	out := make([]JobView, 0)
 	for _, j := range s.sched.Jobs() {
 		v := JobView{
@@ -398,6 +399,18 @@ func (s *Service) Snapshot() []JobView {
 		k := kindFromName(j.Name())
 		v.Kind = k.Kind
 		v.TaskID = k.TaskID
+		// gocron's IsRunning only covers the synchronous part of a job —
+		// syncs/checks are submitted to rcd with _async:true and the rclone
+		// transfer outlives the job function. An active run row (pending or
+		// running, the same set the concurrency guard treats as busy) is the
+		// truthful "in flight" signal for user jobs. IDs live in separate
+		// tables, so each kind consults its own.
+		switch {
+		case k.Kind == "task" && k.TaskID != nil && busySync[*k.TaskID]:
+			v.IsRunning = true
+		case k.Kind == "check" && k.TaskID != nil && busyCheck[*k.TaskID]:
+			v.IsRunning = true
+		}
 
 		if t, err := j.NextRun(); err == nil {
 			v.NextRun = &t
@@ -418,12 +431,40 @@ func (s *Service) Snapshot() []JobView {
 		v.FailCount = st.FailCount
 		v.ConsecutiveFails = st.ConsecutiveFails
 		v.Executions = st.Executions
-		if v.IsRunning {
+		if v.IsRunning && !st.LastStart.IsZero() {
 			v.LastRunStartedAt = &st.LastStart
 		}
 		out = append(out, v)
 	}
 	return out
+}
+
+// activeRunIDs returns the ids of sync tasks and check tasks with a run in
+// flight (pending|running). DB errors degrade to "nothing busy" rather than
+// failing the whole snapshot.
+func (s *Service) activeRunIDs() (map[int64]bool, map[int64]bool) {
+	syncIDs, checkIDs := map[int64]bool{}, map[int64]bool{}
+	var ids []int64
+	if err := s.db.Model(&database.SyncRun{}).
+		Where("status IN ?", []string{database.RunPending, database.RunRunning}).
+		Distinct().Pluck("task_id", &ids).Error; err != nil {
+		slog.Error("scheduler: active sync runs query failed", "err", err)
+		return syncIDs, checkIDs
+	}
+	for _, id := range ids {
+		syncIDs[id] = true
+	}
+	ids = ids[:0]
+	if err := s.db.Model(&database.CheckRun{}).
+		Where("status IN ?", []string{database.RunPending, database.RunRunning}).
+		Distinct().Pluck("task_id", &ids).Error; err != nil {
+		slog.Error("scheduler: active check runs query failed", "err", err)
+		return syncIDs, checkIDs
+	}
+	for _, id := range ids {
+		checkIDs[id] = true
+	}
+	return syncIDs, checkIDs
 }
 
 func isRunning(j gocron.Job) bool {

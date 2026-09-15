@@ -84,7 +84,7 @@ func TestSchedulerJobsList(t *testing.T) {
 }
 
 func TestSchedulerJobDetailAndOverview(t *testing.T) {
-	_, r, admin := schedEnv(t)
+	d, r, admin := schedEnv(t)
 
 	w := doJSON(r, http.MethodGet, "/api/scheduler/jobs", admin, nil)
 	var list map[string]any
@@ -107,6 +107,25 @@ func TestSchedulerJobDetailAndOverview(t *testing.T) {
 	assert.Equal(t, true, ov["is_leader"])
 	assert.EqualValues(t, 1, ov["user_jobs"])
 	assert.EqualValues(t, 0, ov["running_now"])
+
+	// An in-flight run (active run row) counts as running even though the
+	// gocron job functions are idle — rcd submissions are async, so the
+	// transfer outlives the job function.
+	require.NoError(t, d.DB.Create(&database.SyncRun{TaskID: 1, Status: database.RunRunning,
+		Trigger: database.TriggerSchedule}).Error)
+	w = doJSON(r, http.MethodGet, "/api/scheduler/overview", admin, nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, unmarshalBody(w, &ov))
+	assert.EqualValues(t, 1, ov["running_now"], "active run row → running")
+
+	w = doJSON(r, http.MethodGet, "/api/scheduler/jobs", admin, nil)
+	require.NoError(t, unmarshalBody(w, &list))
+	for _, raw := range list["jobs"].([]any) {
+		j := raw.(map[string]any)
+		if j["kind"] == "task" {
+			assert.Equal(t, true, j["is_running"], "task with active run → is_running")
+		}
+	}
 
 	// 404 unknown job
 	w = doJSON(r, http.MethodGet, "/api/scheduler/jobs/nope", admin, nil)
