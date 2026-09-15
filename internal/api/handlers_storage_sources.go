@@ -11,11 +11,24 @@ import (
 
 var storageSourceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+// Storage source kind → which fields are valid. Encoded in the handlers as
+// well as the frontend form (kind: 's3'|'local' only at the UI level).
+var validStorageTypes = map[string]struct{}{
+	"s3":    {},
+	"local": {},
+}
+
+func isValidStorageType(t string) bool {
+	_, ok := validStorageTypes[t]
+	return ok
+}
+
+// DTO shape. The frontend switches on "type" and ignores irrelevant fields.
 func toStorageSourceOut(s *database.StorageSource) gin.H {
-	endpoint, region := strNil(s.Endpoint), strNil(s.Region)
+	endpoint, region, path := strNil(s.Endpoint), strNil(s.Region), strNil(s.Path)
 	return gin.H{
 		"id": s.ID, "name": s.Name, "type": s.Type,
-		"endpoint": endpoint, "region": region, "extra": s.Extra,
+		"endpoint": endpoint, "region": region, "path": path, "extra": s.Extra,
 		"created_at": NaiveUTC(s.CreatedAt), "updated_at": NaiveUTC(s.UpdatedAt),
 	}
 }
@@ -46,7 +59,36 @@ type storageSourceCreateIn struct {
 	Type     string         `json:"type"`
 	Endpoint *string        `json:"endpoint"`
 	Region   *string        `json:"region"`
+	Path     *string        `json:"path"`
 	Extra    map[string]any `json:"extra"`
+}
+
+// validateSSConstraints enforces the type-specific contract:
+//   - s3: provider in extra; endpoint recommended
+//   - local: endpoint/region must be empty; path is the FS prefix
+func validateSSConstraints(c *gin.Context, in storageSourceCreateIn, v *Validator) {
+	if !isValidStorageType(in.Type) {
+		v.add("type", "type must be one of: s3, local", "enum")
+		return
+	}
+	switch in.Type {
+	case "s3":
+		if in.Path != nil {
+			v.add("path", "path is for the local backend; omit for s3", "value_error")
+		}
+		if in.Extra == nil {
+			v.add("extra.provider", "provider is required for s3 (AWS / Minio / Alibaba / Tencent / Other)", "missing")
+		} else if p, ok := in.Extra["provider"].(string); !ok || p == "" {
+			v.add("extra.provider", "provider is required for s3 (AWS / Minio / Alibaba / Tencent / Other)", "missing")
+		}
+	case "local":
+		if in.Endpoint != nil && *in.Endpoint != "" {
+			v.add("endpoint", "endpoint is for network backends; omit for local", "value_error")
+		}
+		if in.Region != nil && *in.Region != "" {
+			v.add("region", "region is for network backends; omit for local", "value_error")
+		}
+	}
 }
 
 // CreateStorageSource (leader+admin) → 201.
@@ -66,6 +108,10 @@ func (d *Deps) CreateStorageSource(c *gin.Context) {
 	if in.Region != nil {
 		v.Str("region", *in.Region, StrOpt{Max: 64})
 	}
+	if in.Path != nil {
+		v.Str("path", *in.Path, StrOpt{Max: 512})
+	}
+	validateSSConstraints(c, in, v)
 	if v.Abort(c) {
 		return
 	}
@@ -81,7 +127,7 @@ func (d *Deps) CreateStorageSource(c *gin.Context) {
 		extra = map[string]any{}
 	}
 	src := database.StorageSource{
-		Name: in.Name, Type: in.Type, Endpoint: in.Endpoint, Region: in.Region,
+		Name: in.Name, Type: in.Type, Endpoint: in.Endpoint, Region: in.Region, Path: in.Path,
 		Extra: database.JSONObject(extra),
 	}
 	if err := d.DB.Create(&src).Error; err != nil {
@@ -127,16 +173,18 @@ func (d *Deps) UpdateStorageSource(c *gin.Context) {
 			Pattern: storageSourceNamePattern, PatternDesc: "^[a-zA-Z0-9_-]+$"})
 		src.Name = *name
 	} else if ok && name == nil {
-		// null violates the NOT NULL column; FastAPI would 422 on None for a
-		// patterned str field — mirror that via the validator.
 		v.add("name", "Input should be a valid string", "string_type")
 	}
+	newType, typeChanged := false, false
 	if typ, ok, err := p.Str("type"); err != nil {
 		AbortInvalidJSON(c, err)
 		return
 	} else if ok && typ != nil {
 		v.Str("type", *typ, StrOpt{Min: 1, Max: 64})
-		src.Type = *typ
+		if *typ != src.Type {
+			src.Type = *typ
+			newType, typeChanged = true, true
+		}
 	}
 	if endpoint, ok, err := p.Str("endpoint"); err != nil {
 		AbortInvalidJSON(c, err)
@@ -156,15 +204,31 @@ func (d *Deps) UpdateStorageSource(c *gin.Context) {
 		}
 		src.Region = region
 	}
+	if path, ok, err := p.Str("path"); err != nil {
+		AbortInvalidJSON(c, err)
+		return
+	} else if ok {
+		if path != nil {
+			v.Str("path", *path, StrOpt{Max: 512})
+		}
+		src.Path = path
+	}
 	if extra, ok, err := p.Object("extra"); err != nil {
 		AbortInvalidJSON(c, err)
 		return
 	} else if ok && extra != nil {
 		src.Extra = database.JSONObject(extra)
 	}
+	// Re-run the type constraint if the type changed (or type fields changed).
+	if typeChanged {
+		validateSSConstraints(c, storageSourceCreateIn{
+			Type: src.Type, Endpoint: src.Endpoint, Region: src.Region, Path: src.Path, Extra: src.Extra,
+		}, v)
+	}
 	if v.Abort(c) {
 		return
 	}
+	_ = newType
 	if err := d.DB.Save(&src).Error; err != nil {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return

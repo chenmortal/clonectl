@@ -22,19 +22,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { errMessage, http } from "@/lib/api";
 import type { StorageSource } from "@/lib/types";
 import { fmtDateTime } from "@/lib/utils";
 
-const EXTRA_FIELDS: Record<string, { label: string; placeholder?: string }[]> = {
-  s3: [{ label: "Provider", placeholder: "AWS / Minio / Alibaba / Tencent / Other" }],
-  cos: [{ label: "Region", placeholder: "ap-guangzhou" }],
-  gcs: [{ label: "Project Number" }],
-  azureblob: [{ label: "Storage Account" }],
-  b2: [{ label: "Account ID" }],
-  swift: [{ label: "Auth URL" }],
+// Only two backends are supported; each carries its own field set.
+type SourceType = "s3" | "local";
+
+const TYPE_LABEL: Record<SourceType, string> = {
+  s3: "S3 对象存储",
+  local: "本地文件系统",
 };
+
+const S3_PROVIDERS = ["AWS", "Minio", "Alibaba", "Tencent", "Other"] as const;
 
 const NAME_RE = /^[a-zA-Z0-9_-]+$/;
 
@@ -59,9 +59,17 @@ export default function StorageSources() {
 
   const rows = data?.data.map((s) => [
     <div key="n" className="font-medium">{s.name}</div>,
-    <Badge key="t" variant="secondary">{s.type}</Badge>,
-    <span key="e" className="font-mono text-xs">{s.endpoint ?? "-"}</span>,
-    <span key="r" className="text-xs">{s.region ?? "-"}</span>,
+    <Badge key="t" variant={s.type === "s3" ? "info" : "secondary"}>
+      {TYPE_LABEL[s.type as SourceType] ?? s.type}
+    </Badge>,
+    s.type === "local" ? (
+      <span key="e" className="font-mono text-xs">{s.path ?? "/"}</span>
+    ) : (
+      <span key="e" className="font-mono text-xs">{s.endpoint ?? "-"}</span>
+    ),
+    <span key="p" className="text-xs">
+      {s.type === "s3" ? String(s.extra?.provider ?? "-") : "-"}
+    </span>,
     <span key="t" className="text-xs text-muted-foreground">
       {fmtDateTime(s.updated_at)}
     </span>,
@@ -93,7 +101,7 @@ export default function StorageSources() {
     <>
       <DataPage
         title="存储源"
-        description="云厂商/后端模板：endpoint、region 与非敏感参数。凭据存放在数据源上。"
+        description="S3 对象存储（endpoint + provider + 凭据在数据源上）或本地文件系统（公共路径前缀）。"
         toolbar={
           <Button
             onClick={() => {
@@ -107,8 +115,8 @@ export default function StorageSources() {
         columns={[
           { key: "name", label: "名称" },
           { key: "type", label: "类型" },
-          { key: "endpoint", label: "Endpoint" },
-          { key: "region", label: "Region" },
+          { key: "target", label: "Endpoint / 路径前缀" },
+          { key: "provider", label: "Provider" },
           { key: "updated", label: "更新时间" },
           { key: "actions", label: "", className: "text-right" },
         ]}
@@ -136,23 +144,41 @@ function SourceDialog({
 }) {
   const invalidate = useInvalidate();
   const [name, setName] = React.useState("");
-  const [type, setType] = React.useState("s3");
+  const [type, setType] = React.useState<SourceType>("s3");
   const [endpoint, setEndpoint] = React.useState("");
   const [region, setRegion] = React.useState("");
+  const [provider, setProvider] = React.useState("Minio");
+  const [customProvider, setCustomProvider] = React.useState(false);
+  const [customProviderVal, setCustomProviderVal] = React.useState("");
+  const [path, setPath] = React.useState("");
   const [extra, setExtra] = React.useState("{}");
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     setName(editing?.name ?? "");
-    setType(editing?.type ?? "s3");
+    const t = (editing?.type === "local" ? "local" : "s3") as SourceType;
+    setType(t);
     setEndpoint(editing?.endpoint ?? "");
     setRegion(editing?.region ?? "");
-    setExtra(
-      editing && Object.keys(editing.extra).length
-        ? JSON.stringify(editing.extra, null, 2)
-        : "{}",
-    );
+    setPath(editing?.path ?? "");
+    const prov = String(editing?.extra?.provider ?? "");
+    if (prov && (S3_PROVIDERS as readonly string[]).includes(prov)) {
+      setProvider(prov);
+      setCustomProvider(false);
+      setCustomProviderVal("");
+    } else if (prov) {
+      setProvider("Other");
+      setCustomProvider(true);
+      setCustomProviderVal(prov);
+    } else {
+      setProvider("Minio");
+      setCustomProvider(false);
+      setCustomProviderVal("");
+    }
+    const rest = { ...(editing?.extra ?? {}) };
+    delete rest.provider;
+    setExtra(Object.keys(rest).length ? JSON.stringify(rest, null, 2) : "{}");
   }, [open, editing]);
 
   const submit = async () => {
@@ -167,14 +193,31 @@ function SourceDialog({
       toast.error("高级参数不是合法 JSON");
       return;
     }
-    setSubmitting(true);
-    const body = {
+
+    const body: Record<string, unknown> = {
       name: name.trim(),
       type,
-      endpoint: endpoint || null,
-      region: region || null,
       extra: extraObj,
     };
+    if (type === "s3") {
+      const prov = customProvider ? customProviderVal.trim() : provider;
+      if (!prov) {
+        toast.error("请选择或填写 provider");
+        return;
+      }
+      body.endpoint = endpoint || null;
+      body.region = region || null;
+      body.extra = { ...extraObj, provider: prov };
+    } else {
+      // local: endpoint/region must be empty; path is the FS prefix.
+      if (!path.trim()) {
+        toast.error("请填写本地文件系统路径前缀");
+        return;
+      }
+      body.path = path.trim();
+    }
+
+    setSubmitting(true);
     try {
       if (editing) {
         await http.put(`/api/storage-sources/${editing.id}`, body);
@@ -213,53 +256,115 @@ function SourceDialog({
             </div>
             <div className="space-y-1.5">
               <Label>类型</Label>
-              <Select value={type} onValueChange={setType}>
+              <Select
+                value={type}
+                onValueChange={(v) => setType(v as SourceType)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.keys(EXTRA_FIELDS).map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="s3">{TYPE_LABEL.s3}</SelectItem>
+                  <SelectItem value="local">{TYPE_LABEL.local}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          {type === "s3" ? (
+            <>
+              <div className="space-y-1.5">
+                <Label>Endpoint</Label>
+                <Input
+                  placeholder="http://127.0.0.1:9000"
+                  value={endpoint}
+                  onChange={(e) => setEndpoint(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Provider</Label>
+                  {customProvider ? (
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="rclone provider 名"
+                        value={customProviderVal}
+                        onChange={(e) => setCustomProviderVal(e.target.value)}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setCustomProvider(false);
+                          setCustomProviderVal("");
+                        }}
+                      >
+                        取消
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Select value={provider} onValueChange={setProvider}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {S3_PROVIDERS.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCustomProvider(true)}
+                      >
+                        自定义
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Region</Label>
+                  <Input
+                    placeholder="可选"
+                    value={region}
+                    onChange={(e) => setRegion(e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                凭据（Access Key / Secret Key）在「数据源」上按需填写，不存放在存储源。
+              </p>
+            </>
+          ) : (
             <div className="space-y-1.5">
-              <Label>Endpoint</Label>
+              <Label>文件系统路径前缀</Label>
               <Input
-                placeholder="http://127.0.0.1:9000"
-                value={endpoint}
-                onChange={(e) => setEndpoint(e.target.value)}
+                className="font-mono"
+                placeholder="/srv/rclone-roots"
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
               />
+              <p className="text-[11px] text-muted-foreground">
+                该存储源下所有数据源的路径都解析到此目录之下；无 endpoint、无需凭据。
+              </p>
             </div>
-            <div className="space-y-1.5">
-              <Label>Region</Label>
-              <Input
-                placeholder="可选"
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-              />
-            </div>
-          </div>
+          )}
+
           <div className="space-y-1.5">
             <Label>高级参数（JSON，写入 extra）</Label>
-            <Textarea
-              className="font-mono text-xs"
-              rows={4}
+            <textarea
+              className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              rows={3}
               value={extra}
               onChange={(e) => setExtra(e.target.value)}
             />
-            {(EXTRA_FIELDS[type] ?? []).length > 0 && (
-              <p className="text-[11px] text-muted-foreground">
-                {EXTRA_FIELDS[type].map((f) => f.label).join(" / ")} 等字段写在这里
-              </p>
-            )}
           </div>
         </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             取消

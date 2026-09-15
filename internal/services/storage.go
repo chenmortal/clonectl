@@ -18,9 +18,15 @@ func DSRemoteName(ds *database.DataSource) string { return fmt.Sprintf("ds-%d", 
 // BuildRemoteParameters builds the rclone parameters dict for a
 // (storage_source, data_source) pair sent to /config/create.
 //
-// type="local" omits credentials (rclone ignores them; pushing AK/SK would
-// just leak values into the rcd config) and defaults extra.root="/" so
-// ds-N:/abs/path resolves to the literal host path instead of CWD-relative.
+// type="local": no credentials (rclone ignores them; pushing AK/SK would
+// leak values into the rcd config) and no endpoint. The storage source's
+// path column is the shared FS root prefix — forwarded as extra.root so
+// ds-N:/abs/path resolves under <prefix>/abs/path instead of the rcd CWD.
+// Fallback order: path column → extra.root → "/".
+//
+// type="s3": provider comes from extra (required, validated at the API
+// layer; "Other" kept as a legacy fallback for rows created before the
+// constraint existed).
 func BuildRemoteParameters(src *database.StorageSource, ds *database.DataSource) database.JSONObject {
 	params := src.Extra.Clone()
 	if src.Endpoint != nil {
@@ -30,9 +36,13 @@ func BuildRemoteParameters(src *database.StorageSource, ds *database.DataSource)
 		params["region"] = *src.Region
 	}
 	if src.Type == "local" {
-		if _, ok := params["root"]; !ok {
-			params["root"] = "/"
+		root := "/"
+		if src.Path != nil && *src.Path != "" {
+			root = *src.Path
+		} else if r, ok := params["root"].(string); ok && r != "" {
+			root = r
 		}
+		params["root"] = root
 		return params
 	}
 	if src.Type == "s3" {

@@ -16,6 +16,8 @@ export interface StorageSource {
   type: string;
   endpoint: string | null;
   region: string | null;
+  /** local backend only: shared filesystem root prefix */
+  path: string | null;
   extra: Record<string, unknown>;
   created_at: string;
   updated_at: string;

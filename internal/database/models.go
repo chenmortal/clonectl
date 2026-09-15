@@ -68,6 +68,7 @@ type StorageSource struct {
 	Type      string     `gorm:"size:64;not null" json:"type"`
 	Endpoint  *string    `gorm:"size:512" json:"endpoint"`
 	Region    *string    `gorm:"size:64" json:"region"`
+	Path      *string    `gorm:"size:512" json:"path"` // local backend FS root prefix
 	Extra     JSONObject `gorm:"not null" json:"extra"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
