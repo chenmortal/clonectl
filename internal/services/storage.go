@@ -82,15 +82,6 @@ func EnsureDataSourceRemote(db *gorm.DB, client *rclone.Client, ds *database.Dat
 	return err
 }
 
-// RemoveRemote deletes a remote, tolerating "not found" (already gone).
-func RemoveRemote(client *rclone.Client, name string) error {
-	_, err := client.DeleteRemote(name)
-	if err == nil {
-		return nil
-	}
-	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "find section") || strings.Contains(msg, "not found") {
-		return nil
-	}
-	return err
-}
+// RemoveRemote removed: legacy storage_configs write path is gone (the
+// /api/storages writes 410 Gone), and no handler calls this anymore.
+

@@ -32,8 +32,8 @@ fmt:
 	gofmt -w internal/ cmd/
 
 web-dist: ## 构建前端 → web/dist（embed 数据源）
-	npm --prefix web ci --registry=https://registry.npmmirror.com
-	npm --prefix web run build
+	npm --prefix frontend ci --registry=https://registry.npmmirror.com
+	npm --prefix frontend run build
 
 all: web-dist build
 

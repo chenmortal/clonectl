@@ -1,27 +1,36 @@
-# Go
+# ───────── Go ─────────
 /rclone-sync
+# Embedded frontend (rebuilt by `make web-dist`)
+web/dist/
+!web/dist/.gitkeep
+# Build / cache
 *.db
 *.db-shm
 *.db-wal
 rcd.log
 *.pid
+vendor/
 
-# Python (legacy build artifacts)
+# ───────── Node (now under frontend/) ─────────
+frontend/node_modules/
+
+# ───────── Python (legacy — safe to keep until full history purge) ─────────
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-vendor/
 
-# Node
-node_modules/
-web/dist/
-!web/dist/.gitkeep
-
-# Env / misc
-.env
+# ───────── Editors / OS ─────────
+.vscode/
 .DS_Store
 
-# Release artifacts
+# ───────── Env / secrets ─────────
+.env
+.env.local
+
+# ───────── Release artifacts ─────────
 dist/
+
+# Local temp test data
+*.tmp

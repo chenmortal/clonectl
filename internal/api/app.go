@@ -80,6 +80,7 @@ func (a *App) Start() error {
 		manager = rclone.NewManager(
 			rclone.RCNormal(cfg.RcloneRCURL), cfg.RcloneRCAddr,
 			cfg.RcloneRCUser, cfg.RcloneRCPass, cfg.RcloneBin)
+		manager.WebGUI = cfg.RcloneWebGUI
 		if err := manager.Start(15 * time.Second); err != nil {
 			return err
 		}

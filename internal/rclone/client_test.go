@@ -2,6 +2,8 @@ package rclone
 
 import (
 	"fmt"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,8 +74,16 @@ func TestCreateAndDeleteRemotePayloads(t *testing.T) {
 
 	_, err := c.CreateRemote("r1", "s3", map[string]any{"provider": "Minio"})
 	require.NoError(t, err)
-	_, err = c.DeleteRemote("r1")
-	require.NoError(t, err)
+	// DeleteRemote was removed: legacy /api/storages write path is 410 Gone.
+	// Verify the underlying RC API still answers /config/delete directly,
+	// which is the shape any future wrapper would use.
+	httpReq, _ := http.NewRequest(http.MethodPost, srv.URL()+"/config/delete",
+		strings.NewReader(`{"name":"r1"}`))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, derr := http.DefaultClient.Do(httpReq)
+	require.NoError(t, derr)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	rec := srv.Records()
 	require.Len(t, rec, 2)

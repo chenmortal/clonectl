@@ -121,10 +121,9 @@ func (c *Client) CreateRemote(name, typ string, parameters map[string]any) (map[
 	}, false)
 }
 
-// DeleteRemote removes one remote config.
-func (c *Client) DeleteRemote(name string) (map[string]any, error) {
-	return c.post("/config/delete", map[string]any{"name": name}, false)
-}
+// DeleteRemote removed: legacy storage_configs write path is gone (the
+// /api/storages 410 410 Gone), and services.RemoveRemote is no longer
+// referenced by any handler.
 
 // StartSync submits sync/copy as an async job and returns the jobid.
 func (c *Client) StartSync(srcFs, dstFs, mode string, options map[string]any) (int64, error) {

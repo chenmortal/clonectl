@@ -22,6 +22,7 @@ type Settings struct {
 	RcloneManaged   bool
 	RcloneBin       string
 	RcloneRCAddr    string
+	RcloneWebGUI    bool
 	PollInterval    int // seconds
 	CheckTimeout    int // seconds
 	APIHost         string
@@ -61,6 +62,7 @@ func Load() Settings {
 		RcloneManaged: envBool("RCLONE_MANAGED", true),
 		RcloneBin:     envStr("RCLONE_BIN", "rclone"),
 		RcloneRCAddr:  envStr("RCLONE_RC_ADDR", "0.0.0.0:5572"),
+		RcloneWebGUI:  envBool("RCLONE_RC_WEB_GUI", false),
 		PollInterval:  envInt("POLL_INTERVAL_SECONDS", 10),
 		CheckTimeout:  envInt("CHECK_TIMEOUT_SECONDS", 3600),
 		APIHost:       envStr("API_HOST", "0.0.0.0"),
