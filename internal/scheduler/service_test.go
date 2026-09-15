@@ -252,6 +252,57 @@ func TestSnapshotMergesGocronAndMonitor(t *testing.T) {
 	}
 }
 
+func TestSnapshotIsRunningReflectsActiveRuns(t *testing.T) {
+	db := schedDB(t)
+	s, _, _ := newTestService(t, db)
+	s.SetLeader(true)
+	tk := mkSyncTask(t, db, "busy", "0 3 * * *", true)
+	require.NoError(t, s.RegisterTask(tk))
+	ck := &database.CheckTask{Name: "checkbusy", SrcDataSourceID: 1, DstDataSourceID: 1,
+		SrcPath: "/a", DstPath: "/b", Enabled: true, CheckOptions: database.JSONObject{}}
+	cron := "0 * * * *"
+	ck.Cron = &cron
+	require.NoError(t, db.Create(ck).Error)
+	require.NoError(t, s.RegisterCheckTask(ck))
+	require.NoError(t, s.Start())
+
+	// rcd submissions are async: an in-flight sync/check shows up as an active
+	// run row while the gocron job functions are NOT executing. The monitor
+	// must still report those jobs as running.
+	syncRun := &database.SyncRun{TaskID: tk.ID, Status: database.RunRunning,
+		Trigger: database.TriggerSchedule}
+	require.NoError(t, db.Create(syncRun).Error)
+	checkRun := &database.CheckRun{TaskID: ck.ID, Status: database.RunRunning,
+		Trigger: database.TriggerSchedule}
+	require.NoError(t, db.Create(checkRun).Error)
+
+	byName := map[string]JobView{}
+	for _, v := range s.Snapshot() {
+		byName[v.Name] = v
+	}
+	assert.True(t, byName["task-"+itoa(int(tk.ID))].IsRunning, "active sync run → running")
+	assert.True(t, byName["checktask-"+itoa(int(ck.ID))].IsRunning, "active check run → running")
+
+	// Pending counts too (a sync blocked in its pre-check is in flight).
+	require.NoError(t, db.Model(syncRun).Update("status", database.RunPending).Error)
+	require.NoError(t, db.Model(checkRun).Update("status", database.RunPending).Error)
+	byName = map[string]JobView{}
+	for _, v := range s.Snapshot() {
+		byName[v.Name] = v
+	}
+	assert.True(t, byName["task-"+itoa(int(tk.ID))].IsRunning, "pending sync run → running")
+
+	// Finished runs don't.
+	require.NoError(t, db.Model(syncRun).Update("status", database.RunSuccess).Error)
+	require.NoError(t, db.Model(checkRun).Update("status", database.RunSuccess).Error)
+	byName = map[string]JobView{}
+	for _, v := range s.Snapshot() {
+		byName[v.Name] = v
+	}
+	assert.False(t, byName["task-"+itoa(int(tk.ID))].IsRunning, "finished sync run → not running")
+	assert.False(t, byName["checktask-"+itoa(int(ck.ID))].IsRunning, "finished check run → not running")
+}
+
 func TestRunUserJobNow(t *testing.T) {
 	db := schedDB(t)
 	s, tasks, _ := newTestService(t, db)

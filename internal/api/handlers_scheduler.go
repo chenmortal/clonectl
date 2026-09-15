@@ -10,7 +10,8 @@ import (
 )
 
 // Scheduler monitoring API — inspired by go-co-op/gocron-ui, implemented on
-// gocron's own Job API + the in-memory Monitor. Read for every role;
+// gocron's own Job API + the in-memory Monitor; user-job running state also
+// consults active run rows (rcd submissions are async). Read for every role;
 // RunNow needs edit|admin AND leadership. History resets on restart (in-memory).
 
 // ListSchedulerJobs → {node_id,is_leader,scheduler_running,jobs:[...]}.
