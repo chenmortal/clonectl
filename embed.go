@@ -11,13 +11,13 @@ import (
 	"net/http"
 )
 
-//go:embed all:web/dist
+//go:embed all:dist/web
 var dist embed.FS
 
-// EmbeddedStatic serves web/dist (nil when it holds only the placeholder —
+// EmbeddedStatic serves dist/web (nil when it holds only the placeholder —
 // no index.html to serve).
 func EmbeddedStatic() http.FileSystem {
-	sub, err := fs.Sub(dist, "web/dist")
+	sub, err := fs.Sub(dist, "dist/web")
 	if err != nil {
 		return nil
 	}

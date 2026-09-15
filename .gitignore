@@ -1,8 +1,8 @@
 # ───────── Go ─────────
 /rclone-sync
 # Embedded frontend (rebuilt by `make web-dist`)
-web/dist/
-!web/dist/.gitkeep
+dist/web/
+!dist/web/.gitkeep
 # Build / cache
 *.db
 *.db-shm

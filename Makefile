@@ -31,9 +31,13 @@ vet:
 fmt:
 	gofmt -w internal/ cmd/
 
-web-dist: ## 构建前端 → web/dist（embed 数据源）
+web-dist: ## 构建前端 → dist/web（embed 数据源）
 	npm --prefix frontend ci --registry=https://registry.npmmirror.com
-	npm --prefix frontend run build
+	# tsc/vite 都要求当前目录是 frontend/（tsc 用 tsconfig 解析 include，
+	# vite 用 vite.config.ts 解析 outDir）。子 shell 跑构建后扁平化产物。
+	cd frontend && npm run build
+	# Rollup 保留 "src/" 前缀；embed 期望 dist/web/ 直平结构。
+	mv dist/web/src/* dist/web/ && rmdir dist/web/src 2>/dev/null || true
 
 all: web-dist build
 
@@ -59,13 +63,13 @@ release: web-dist verify-dist
 	@echo "release $(VERSION) ready:"
 	@ls -lh $(RELEASE_DIR)
 
-verify-dist: ## 校验 web/dist 已构建（防止把空占位发布出去）
-	@test -f web/dist/index.html || { \
-		echo "ERROR: web/dist/index.html 不存在 —— 先执行 make web-dist"; exit 1; }
+verify-dist: ## 校验 dist/web 已构建（防止把空占位发布出去）
+	@test -f dist/web/index.html || { \
+		echo "ERROR: dist/web/index.html 不存在 —— 先执行 make web-dist"; exit 1; }
 
 clean: ## 清理构建产物
 	rm -rf dist/release rclone-sync
-	-git clean -fX web/dist
+	-git clean -fX dist/web
 
 verify-release: ## 抽检发布产物：解压 + --version + 帮助
 	@test -d $(RELEASE_DIR) || { echo "no release output; run make release"; exit 1; }
