@@ -40,6 +40,8 @@ web-dist: ## 构建前端 → dist/web（embed 数据源）
 	cd frontend && npm run build
 	# Rollup 保留 "src/" 前缀；embed 期望 dist/web/ 直平结构。
 	mv dist/web/src/* dist/web/ && rmdir dist/web/src 2>/dev/null || true
+	# keep the embed placeholder (emptyOutDir wipes it; a fresh clone needs it)
+	touch dist/web/.gitkeep
 
 all: web-dist build
 

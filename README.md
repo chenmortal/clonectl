@@ -8,7 +8,7 @@
 
 ## 功能
 
-- **存储源 / 数据源**：云厂商模板（s3 含 MinIO/AWS/阿里/腾讯、oss、cos、gcs、azureblob、b2、swift、local），数据源绑定用户与 read/write/admin 权限；`verify` 探针验证读写可用性
+- **存储源 / 数据源**：两类存储源——**S3 对象存储**（endpoint + provider：AWS/Minio/阿里/腾讯/自定义）与**本地文件系统**（公共路径前缀，无需凭据）；数据源绑定用户与 read/write/admin 权限；`verify` 探针验证读写可用性
 - **同步任务**：cron 调度 sync/copy，可绑定「同步前一致性检查」（一致跳过 / 差异继续 / 出错阻止）
 - **检查任务**：rclone operations/check，独立 cron 或仅手动/pre-check
 - **实时监控**：运行中任务 5s 刷新进度/速度/ETA；执行历史与统计

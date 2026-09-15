@@ -1,12 +1,3 @@
-export interface StorageConfig {
-  id: number;
-  name: string;
-  type: string;
-  parameters: Record<string, string>;
-  created_at: string;
-  updated_at: string;
-}
-
 // --- v2: StorageSource + DataSource --------------------------------------
 
 
@@ -180,95 +171,6 @@ export interface RunDetail extends SyncRun {
 export interface HealthOut {
   status: string;
   rclone_reachable: boolean;
-}
-
-export interface FieldDef {
-  key: string;
-  label: string;
-  required?: boolean;
-  secret?: boolean;
-  placeholder?: string;
-  tooltip?: string;
-}
-
-export interface BackendDef {
-  type: string;
-  label: string;
-  providers?: string[];
-  fields: FieldDef[];
-}
-
-export const BACKENDS: BackendDef[] = [
-  {
-    type: "s3",
-    label: "S3 兼容（AWS / MinIO / 阿里 / 腾讯 / 华为云 OBS…）",
-    providers: ["AWS", "Minio", "Alibaba", "Tencent", "HuaweiObs", "Other"],
-    fields: [
-      { key: "endpoint", label: "Endpoint", placeholder: "http://127.0.0.1:9000" },
-      { key: "access_key_id", label: "Access Key ID", required: true },
-      { key: "secret_access_key", label: "Secret Access Key", required: true, secret: true },
-      { key: "region", label: "Region" },
-    ],
-  },
-  {
-    type: "local",
-    label: "本地文件系统",
-    fields: [
-      {
-        key: "root",
-        label: "Root 目录（可选）",
-        placeholder: "/var/data",
-        tooltip: "rclone 的 local 后端 root 参数。留空表示使用 rcd 主机整个文件系统，任务路径解析为绝对路径。",
-      },
-    ],
-  },
-  {
-    type: "cos",
-    label: "腾讯云 COS",
-    fields: [
-      { key: "region", label: "Region", required: true, placeholder: "ap-guangzhou" },
-      { key: "access_key_id", label: "SecretId", required: true },
-      { key: "secret_access_key", label: "SecretKey", required: true, secret: true },
-    ],
-  },
-  {
-    type: "gcs",
-    label: "Google Cloud Storage",
-    fields: [
-      { key: "project_number", label: "Project Number" },
-      { key: "bucket_policy_only", label: "Bucket Policy Only", placeholder: "true" },
-    ],
-  },
-  {
-    type: "azureblob",
-    label: "Azure Blob Storage",
-    fields: [
-      { key: "account", label: "Storage Account", required: true },
-      { key: "key", label: "Account Key", required: true, secret: true },
-      { key: "endpoint", label: "自定义 Endpoint" },
-    ],
-  },
-  {
-    type: "b2",
-    label: "Backblaze B2",
-    fields: [
-      { key: "account", label: "Account ID / Application Key ID", required: true },
-      { key: "key", label: "Application Key", required: true, secret: true },
-    ],
-  },
-  {
-    type: "swift",
-    label: "OpenStack Swift",
-    fields: [
-      { key: "auth", label: "Auth URL", required: true },
-      { key: "user", label: "User", required: true },
-      { key: "key", label: "Key", required: true, secret: true },
-    ],
-  },
-];
-
-export function backendOf(type: string): BackendDef | undefined {
-  return BACKENDS.find((b) => b.type === type);
 }
 
 // --- Scheduler monitoring (Go backend, RFC3339Z timestamps) ---------------
