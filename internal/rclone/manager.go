@@ -184,6 +184,13 @@ func (m *Manager) Start(waitTimeout time.Duration) error {
 	cmd.Stderr = log
 	cmd.Env = childEnv()
 	cmd.SysProcAttr = detachedProcAttr()
+	// Pin the rcd working directory to "/" so local-backend fs paths are
+	// absolute by contract: data-source fs specs are "ds-N:{storage FS
+	// prefix}{ds path}" (services.SidePath), and rclone resolves the path
+	// after "name:" against the rcd CWD — inheriting the server's CWD
+	// would make those paths deployment-dependent. (An already-running
+	// foreign rcd keeps its own CWD — that's the operator's contract.)
+	cmd.Dir = "/"
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start rclone rcd: %w", err)
 	}

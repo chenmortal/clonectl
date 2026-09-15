@@ -29,8 +29,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { isValidCron } from "@/lib/cron";
 import { errMessage, http } from "@/lib/api";
-import type { CheckTask, DataSource, SyncTask } from "@/lib/types";
-import { fmtDateTime } from "@/lib/utils";
+import type { CheckTask, DataSource, StorageSource, SyncTask } from "@/lib/types";
+import { effectiveTaskPath, fmtDateTime } from "@/lib/utils";
 
 interface TaskForm {
   name: string;
@@ -53,6 +53,9 @@ export default function Tasks() {
   });
   const { data: dsList } = useList<DataSource>({ resource: "data-sources" });
   const { data: checks } = useList<CheckTask>({ resource: "check-tasks" });
+  const { data: srcList } = useList<StorageSource>({
+    resource: "storage-sources",
+  });
 
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<SyncTask | null>(null);
@@ -62,6 +65,14 @@ export default function Tasks() {
     id === null ? "-" : dsList?.data.find((d) => d.id === id)?.name ?? `#${id}`;
   const checkName = (id: number | null) =>
     id === null ? null : checks?.data.find((c) => c.id === id)?.name ?? `#${id}`;
+  // The path rclone actually receives: storage prefix (local) + data
+  // source path + task subpath.
+  const taskPath = (dsId: number | null, sub: string) => {
+    const ds = dsId === null ? undefined : dsList?.data.find((d) => d.id === dsId);
+    if (!ds) return sub || "/";
+    const src = srcList?.data.find((s) => s.id === ds.storage_source_id);
+    return effectiveTaskPath(src, ds.path, sub) || "/";
+  };
 
   const trigger = async (t: SyncTask) => {
     setTriggering(t.id);
@@ -106,11 +117,15 @@ export default function Tasks() {
       </div>,
       <span key="s" className="font-mono text-xs">
         {dsName(t.src_data_source_id)}
-        <span className="text-muted-foreground">:{t.src_path || "/"}</span>
+        <span className="text-muted-foreground">
+          :{taskPath(t.src_data_source_id, t.src_path)}
+        </span>
       </span>,
       <span key="d" className="font-mono text-xs">
         {dsName(t.dst_data_source_id)}
-        <span className="text-muted-foreground">:{t.dst_path || "/"}</span>
+        <span className="text-muted-foreground">
+          :{taskPath(t.dst_data_source_id, t.dst_path)}
+        </span>
       </span>,
       <span key="c" className="font-mono text-xs">
         {t.cron}
@@ -187,6 +202,7 @@ export default function Tasks() {
         open={open}
         editing={editing}
         dataSources={dsList?.data ?? []}
+        storageSources={srcList?.data ?? []}
         checkTasks={checks?.data ?? []}
         onClose={() => setOpen(false)}
       />
@@ -198,18 +214,28 @@ function TaskDialog({
   open,
   editing,
   dataSources,
+  storageSources,
   checkTasks,
   onClose,
 }: {
   open: boolean;
   editing: SyncTask | null;
   dataSources: DataSource[];
+  storageSources: StorageSource[];
   checkTasks: CheckTask[];
   onClose: () => void;
 }) {
   const invalidate = useInvalidate();
   const [form, setForm] = React.useState<TaskForm>(emptyForm());
   const [submitting, setSubmitting] = React.useState(false);
+
+  // Live preview of the path handed to rclone for each side.
+  const rclonePath = (dsId: string, sub: string) => {
+    const ds = dataSources.find((d) => String(d.id) === dsId);
+    if (!ds) return null;
+    const src = storageSources.find((s) => s.id === ds.storage_source_id);
+    return effectiveTaskPath(src, ds.path, sub) || "/";
+  };
 
   function emptyForm(): TaskForm {
     return {
@@ -347,6 +373,11 @@ function TaskDialog({
                 value={form.srcPath}
                 onChange={(e) => set("srcPath", e.target.value)}
               />
+              {rclonePath(form.src, form.srcPath) && (
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  rclone 路径:{rclonePath(form.src, form.srcPath)}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>目标数据源</Label>
@@ -370,6 +401,11 @@ function TaskDialog({
                 value={form.dstPath}
                 onChange={(e) => set("dstPath", e.target.value)}
               />
+              {rclonePath(form.dst, form.dstPath) && (
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  rclone 路径:{rclonePath(form.dst, form.dstPath)}
+                </p>
+              )}
             </div>
           </div>
         </DialogSection>

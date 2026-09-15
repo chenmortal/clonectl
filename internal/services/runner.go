@@ -59,15 +59,22 @@ func ResolveRefs(db *gorm.DB, client *rclone.Client, task *database.SyncTask) (s
 	return src, dst, nil
 }
 
+// resolveSide pushes the ds-N remote and returns the fs spec
+// "ds-N:{joined path}" where the path is SidePath(storage, ds.Path) —
+// local prefixes baked in — joined with the task subpath.
 func resolveSide(db *gorm.DB, client *rclone.Client, dsID int64, path string) (string, error) {
 	var ds database.DataSource
 	if err := db.First(&ds, dsID).Error; err != nil {
 		return "", fmt.Errorf("data source %d not found", dsID)
 	}
+	var src database.StorageSource
+	if err := db.First(&src, ds.StorageSourceID).Error; err != nil {
+		return "", fmt.Errorf("storage source %d not found: %w", ds.StorageSourceID, err)
+	}
 	if err := EnsureDataSourceRemote(db, client, &ds); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("ds-%d:%s", ds.ID, JoinDSPath(ds.Path, path)), nil
+	return fmt.Sprintf("%s:%s", DSRemoteName(&ds), JoinDSPath(SidePath(&src, ds.Path), path)), nil
 }
 
 // RunTask executes one sync task: concurrency guard → run row (pending) →

@@ -323,7 +323,7 @@ func (d *Deps) VerifyDataSource(c *gin.Context) {
 
 	client := d.RC
 	remoteName := services.DSRemoteName(ds)
-	remoteSpec := remoteName + ":" + ds.Path
+	remoteSpec := remoteName + ":" + services.SidePath(&src, ds.Path)
 	var errMsg *string
 	readOK, writeOK := false, false
 	setErr := func(s string) { e := s; errMsg = &e }
