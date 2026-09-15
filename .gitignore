@@ -34,3 +34,6 @@ dist/
 
 # Local temp test data
 *.tmp
+
+# Claude Code local state
+.claude/
