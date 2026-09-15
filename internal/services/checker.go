@@ -30,11 +30,11 @@ func RunCheck(db *gorm.DB, client *rclone.Client, checkTaskID int64, trigger str
 		return nil, err
 	}
 
-	src, err := resolveCheckSide(db, client, task.SrcDataSourceID, task.SrcPath)
+	src, err := resolveSide(db, client, task.SrcDataSourceID, task.SrcPath)
 	var jobID int64
 	if err == nil {
 		var dst string
-		dst, err = resolveCheckSide(db, client, task.DstDataSourceID, task.DstPath)
+		dst, err = resolveSide(db, client, task.DstDataSourceID, task.DstPath)
 		if err == nil {
 			jobID, err = client.StartCheck(src, dst, task.CheckOptions)
 		}
@@ -63,17 +63,6 @@ func RunCheck(db *gorm.DB, client *rclone.Client, checkTaskID int64, trigger str
 	slog.Error("check failed to start", "check", check.ID, "err", err)
 	NotifyCheckRunFailure(db, check)
 	return check, nil
-}
-
-func resolveCheckSide(db *gorm.DB, client *rclone.Client, dsID int64, path string) (string, error) {
-	var ds database.DataSource
-	if err := db.First(&ds, dsID).Error; err != nil {
-		return "", fmt.Errorf("data source %d not found", dsID)
-	}
-	if err := EnsureDataSourceRemote(db, client, &ds); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("ds-%d:%s", ds.ID, JoinDSPath(ds.Path, path)), nil
 }
 
 // PollCheck advances one running check when the rclone job finished.

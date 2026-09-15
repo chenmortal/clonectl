@@ -1,8 +1,48 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+import type { StorageSource } from "@/lib/types";
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+/** Join "{base}/{sub}" with sane slashes. Mirror of Go services.JoinDSPath. */
+export function joinDSPath(base: string, sub: string): string {
+  const b = base.replace(/\/+$/, "");
+  const s = sub.replace(/^\/+/, "");
+  if (!b || b === "/") return s;
+  if (!s) return b;
+  return `${b}/${s}`;
+}
+
+/**
+ * The path actually handed to rclone for a data source: local storage
+ * sources bake their FS prefix into the path (rclone's local backend has
+ * no "root" config option), other backends keep the data source path
+ * (bucket/prefix). Mirror of Go services.SidePath.
+ */
+export function effectiveDSPath(
+  src: Pick<StorageSource, "type" | "path" | "extra"> | null | undefined,
+  dsPath: string,
+): string {
+  if (src?.type === "local") {
+    const fallbackRoot =
+      typeof src.extra?.root === "string" && src.extra.root
+        ? src.extra.root
+        : "/";
+    return joinDSPath(src.path?.trim() || fallbackRoot, dsPath);
+  }
+  return dsPath;
+}
+
+/** Full rclone path for a task side: effective DS path + task subpath. */
+export function effectiveTaskPath(
+  src: Pick<StorageSource, "type" | "path" | "extra"> | null | undefined,
+  dsPath: string | null | undefined,
+  subPath: string | null | undefined,
+): string {
+  return joinDSPath(effectiveDSPath(src, dsPath ?? ""), subPath ?? "");
 }
 
 /** Render a naive-UTC API timestamp ("2026-09-14T03:00:00") as "MM-DD HH:mm". */

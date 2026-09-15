@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,7 +13,8 @@ import (
 	"rclone_sync/internal/rclone/rctest"
 )
 
-// runnerEnv: DB + fake rcd + one s3 source + two data sources + one task.
+// runnerEnv: DB + fake rcd + one s3 source + two data sources + one local
+// source with an FS prefix + its data source + one task.
 func runnerEnv(t *testing.T) (*gorm.DB, *rclone.Client, *rctest.Server, *database.SyncTask) {
 	t.Helper()
 	db, err := database.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
@@ -24,13 +26,20 @@ func runnerEnv(t *testing.T) (*gorm.DB, *rclone.Client, *rctest.Server, *databas
 	require.NoError(t, db.Create(&admin).Error)
 	src := database.StorageSource{Name: "s3", Type: "s3", Extra: database.JSONObject{"provider": "Minio"}}
 	require.NoError(t, db.Create(&src).Error)
+	root := "/srv/roots"
+	fsSrc := database.StorageSource{Name: "fs", Type: "local", Path: &root,
+		Extra: database.JSONObject{}}
+	require.NoError(t, db.Create(&fsSrc).Error)
 	ak, sk := "ak", "sk"
 	dsA := database.DataSource{Name: "a", StorageSourceID: src.ID, Path: "/data",
 		AccessKeyID: &ak, SecretAccessKey: &sk, OwnerUserID: admin.ID}
 	dsB := database.DataSource{Name: "b", StorageSourceID: src.ID, Path: "/backup/",
 		AccessKeyID: &ak, SecretAccessKey: &sk, OwnerUserID: admin.ID}
+	dsL := database.DataSource{Name: "l", StorageSourceID: fsSrc.ID, Path: "/data",
+		OwnerUserID: admin.ID}
 	require.NoError(t, db.Create(&dsA).Error)
 	require.NoError(t, db.Create(&dsB).Error)
+	require.NoError(t, db.Create(&dsL).Error)
 
 	task := database.SyncTask{Name: "nightly", SrcDataSourceID: dsA.ID, DstDataSourceID: dsB.ID,
 		SrcPath: "sub", DstPath: "sub", Mode: database.ModeSync, Cron: "0 3 * * *", Enabled: true,
@@ -153,4 +162,49 @@ func TestJoinDSPath(t *testing.T) {
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, JoinDSPath(tc.ds, tc.sub), "JoinDSPath(%q,%q)", tc.ds, tc.sub)
 	}
+}
+
+func TestSidePath(t *testing.T) {
+	root := "/srv/roots"
+	slashRoot := "/srv/roots/"
+	cases := []struct {
+		name   string
+		src    database.StorageSource
+		dsPath string
+		want   string
+	}{
+		{"local bakes path column prefix", database.StorageSource{Type: "local", Path: &root}, "/bucket/data", "/srv/roots/bucket/data"},
+		{"local prefix trailing slash stripped", database.StorageSource{Type: "local", Path: &slashRoot}, "/data", "/srv/roots/data"},
+		{"local extra.root fallback", database.StorageSource{Type: "local", Extra: database.JSONObject{"root": "/alt"}}, "/data", "/alt/data"},
+		{"local no prefix degenerates to slash root", database.StorageSource{Type: "local"}, "/data", "data"},
+		{"s3 keeps bucket path as-is", database.StorageSource{Type: "s3", Extra: database.JSONObject{"provider": "Minio"}}, "/bucket/data", "/bucket/data"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, SidePath(&tc.src, tc.dsPath), tc.name)
+	}
+}
+
+func TestRunTaskLocalPrefixBakesIntoFsSpec(t *testing.T) {
+	db, client, srv, task := runnerEnv(t)
+	var dsL database.DataSource
+	require.NoError(t, db.Where("name = ?", "l").First(&dsL).Error)
+	require.NoError(t, db.Model(&task).Updates(map[string]any{
+		"src_data_source_id": dsL.ID, "dst_data_source_id": dsL.ID,
+	}).Error)
+
+	run, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	require.NoError(t, err)
+	require.Equal(t, database.RunRunning, run.Status)
+
+	rec := srv.Records()
+	require.Len(t, rec, 3) // config/create (ds-3) ×2 + sync
+	spec := fmt.Sprintf("ds-%d:/srv/roots/data/sub", dsL.ID)
+	assert.Equal(t, spec, rec[2].Body["srcFs"], "local FS prefix baked into the path")
+	assert.Equal(t, spec, rec[2].Body["dstFs"])
+	params := rec[0].Body["parameters"].(map[string]any)
+	assert.Equal(t, "local", rec[0].Body["type"])
+	_, hasRoot := params["root"]
+	assert.False(t, hasRoot, "local backend has no root option; never send one")
+	_, hasAK := params["access_key_id"]
+	assert.False(t, hasAK, "local remote carries no credentials")
 }

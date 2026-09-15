@@ -51,7 +51,7 @@ import type {
   StorageSource,
   UserOut,
 } from "@/lib/types";
-import { fmtDateTime } from "@/lib/utils";
+import { effectiveDSPath, fmtDateTime } from "@/lib/utils";
 
 export default function DataSources() {
   const invalidate = useInvalidate();
@@ -118,9 +118,14 @@ export default function DataSources() {
       <Badge key="s" variant="outline">
         {src ? `${src.name} · ${src.type}` : `#${ds.storage_source_id}`}
       </Badge>,
-      <span key="p" className="font-mono text-xs">
-        {ds.path}
-      </span>,
+      <div key="p" className="space-y-0.5 font-mono text-xs">
+        <div>{effectiveDSPath(src, ds.path)}</div>
+        {src?.type === "local" && (
+          <div className="text-[11px] text-muted-foreground">
+            存储源内相对路径：{ds.path}
+          </div>
+        )}
+      </div>,
       ds.last_verified_ok === null ? (
         <span className="text-xs text-muted-foreground">未验证</span>
       ) : ds.last_verified_ok ? (
@@ -312,6 +317,11 @@ function DataSourceDialog({
               value={path}
               onChange={(e) => setPath(e.target.value)}
             />
+            {selected && (
+              <p className="font-mono text-[11px] text-muted-foreground">
+                实际传给 rclone：{effectiveDSPath(selected, path) || "/"}
+              </p>
+            )}
           </div>
 
           {needsCreds && (
