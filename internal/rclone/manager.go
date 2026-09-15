@@ -14,6 +14,10 @@ import (
 	"time"
 )
 
+// RcdLogName is the file the managed rcd subprocess appends to, relative to
+// the serve process working directory (also read by the /api/logs endpoints).
+const RcdLogName = "rcd.log"
+
 // Manager supervises a managed rclone rcd subprocess (RCLONE_MANAGED=true)
 // or just health-checks an external one. Port of app/rclone/manager.py.
 type Manager struct {
@@ -38,7 +42,7 @@ func NewManager(rcAddr, user, pass, bin string) *Manager {
 		user:    user,
 		pass:    pass,
 		bin:     bin,
-		logFile: "rcd.log",
+		logFile: RcdLogName,
 		pidFile: "rcd.pid",
 	}
 }

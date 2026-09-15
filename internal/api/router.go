@@ -27,8 +27,11 @@ func NewRouter(d *Deps) *gin.Engine {
 	registerRuns(r, d)
 	registerScheduler(r, d)
 	registerProxy(r, d)
+	registerLogs(r, d)
 
 	r.GET("/healthz", d.Healthz)
+	// Public (pre-auth): brand title for the login page and app shell.
+	r.GET("/api/site-info", d.SiteInfo)
 
 	// Static/SPA last (dev disk mode; release builds pass an embed.FS).
 	MountStatic(r, d.Static)
@@ -128,6 +131,12 @@ func registerStorages(r *gin.Engine, d *Deps) {
 	g.GET("/:storage_id", d.GetStorage)
 	g.PUT("/:storage_id", d.UpdateStorageDeprecated)
 	g.DELETE("/:storage_id", d.DeleteStorageDeprecated)
+}
+
+func registerLogs(r *gin.Engine, d *Deps) {
+	g := r.Group("/api/logs", d.RequireAuth(), d.RequireRoles(database.RoleAdmin))
+	g.GET("", d.LogTail)
+	g.GET("/download", d.LogDownload)
 }
 
 func registerSystemSettings(r *gin.Engine, d *Deps) {

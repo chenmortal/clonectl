@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useSiteTitle } from "@/providers/site";
 
 const schema = z.object({
   username: z.string().min(1, "请输入用户名"),
@@ -24,6 +25,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function Login() {
   const { mutate: login, isLoading } = useLogin();
+  const siteTitle = useSiteTitle();
   const {
     register,
     handleSubmit,
@@ -40,7 +42,7 @@ export default function Login() {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <PlayCircle className="mx-auto h-10 w-10 text-primary" />
-          <CardTitle className="text-xl">rclone-sync</CardTitle>
+          <CardTitle className="text-xl">{siteTitle}</CardTitle>
           <CardDescription>对象存储周期同步控制台</CardDescription>
         </CardHeader>
         <CardContent>

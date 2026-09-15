@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import type { LogTail, SiteInfo } from "@/lib/types";
+
 /**
  * Thin axios wrapper shared by the refine data provider and custom calls.
  * Error shape: FastAPI bodies {"detail": string | [{loc,msg,type}]}.
@@ -57,3 +59,24 @@ export const healthz = () =>
   http
     .get<{ status: string; rclone_reachable: boolean }>("/healthz")
     .then((r) => r.data);
+
+/** Brand title (public); empty site_title → caller applies its default. */
+export const getSiteInfo = () =>
+  http.get<SiteInfo>("/api/site-info").then((r) => r.data);
+
+/** Last `lines` lines of the rcd log (admin). */
+export const getLogTail = (lines: number) =>
+  http.get<LogTail>("/api/logs", { params: { lines } }).then((r) => r.data);
+
+/** Download the full rcd log as a file (auth via the shared interceptor). */
+export async function downloadLog(): Promise<void> {
+  const r = await http.get<Blob>("/api/logs/download", {
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(r.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "rcd.log";
+  a.click();
+  URL.revokeObjectURL(url);
+}

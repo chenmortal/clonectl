@@ -1,5 +1,5 @@
 import { Authenticated, Refine } from "@refinedev/core";
-import routerProvider, { DocumentTitleHandler } from "@refinedev/react-router-v6";
+import routerProvider from "@refinedev/react-router-v6";
 import { CircleUser, Database, FolderOpen, ListChecks, MonitorCheck, Settings as SettingsIcon, Workflow } from "lucide-react";
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -111,7 +111,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         </Route>
       </Routes>
       <Toaster richColors position="top-center" closeButton />
-      <DocumentTitleHandler />
     </Refine>
     </BrowserRouter>
   </React.StrictMode>,
