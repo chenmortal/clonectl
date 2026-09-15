@@ -3,12 +3,16 @@ import { Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
+import { CronField } from "@/components/shared/cron-field";
 import { DataPage } from "@/components/shared/data-page";
+import { DialogSection } from "@/components/shared/dialog-section";
+import { InfoTip } from "@/components/shared/info-tip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -24,18 +28,47 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { isValidCron } from "@/lib/cron";
 import { errMessage, http } from "@/lib/api";
 import type { CheckOptions, CheckTask, DataSource } from "@/lib/types";
 import { fmtDateTime } from "@/lib/utils";
 
-const OPTION_META: { key: keyof CheckOptions; label: string }[] = [
-  { key: "oneWay", label: "oneWay 单向" },
-  { key: "download", label: "download 全量下载比对" },
-  { key: "differ", label: "differ 记录不一致" },
-  { key: "missingOnSrc", label: "missingOnSrc 源缺失" },
-  { key: "missingOnDst", label: "missingOnDst 目标缺失" },
-  { key: "match", label: "match 记录一致" },
-  { key: "error", label: "error 记录错误" },
+const OPTION_META: { key: keyof CheckOptions; label: string; desc: string }[] = [
+  {
+    key: "differ",
+    label: "differ 内容不一致",
+    desc: "在结果中列出两端都有、但内容（哈希）不一致的文件。",
+  },
+  {
+    key: "missingOnDst",
+    label: "missingOnDst 目标缺失",
+    desc: "列出源端有、目标端没有的文件。",
+  },
+  {
+    key: "missingOnSrc",
+    label: "missingOnSrc 源端缺失",
+    desc: "列出目标端有、源端没有的文件。",
+  },
+  {
+    key: "error",
+    label: "error 读取错误",
+    desc: "列出访问或读取失败的文件。",
+  },
+  {
+    key: "match",
+    label: "match 完全一致",
+    desc: "在结果中列出两端一致的文件。仅用于核对报告，文件量大时报告会很长。",
+  },
+  {
+    key: "oneWay",
+    label: "oneWay 单向检查",
+    desc: "只检查源端存在的文件：目标端多出的文件不计入差异，检查更容易通过。",
+  },
+  {
+    key: "download",
+    label: "download 下载比对",
+    desc: "把文件下载到本地逐一算哈希比对。最准确、不依赖远端哈希，但非常慢且耗流量；仅当远端不支持哈希或怀疑哈希缓存不准时开启。",
+  },
 ];
 
 const DEFAULT_CHECK: CheckOptions = {
@@ -256,8 +289,8 @@ function CheckDialog({
   const submit = async () => {
     if (!form.name.trim()) return toast.error("请输入任务名称");
     if (!form.src || !form.dst) return toast.error("请选择源与目标数据源");
-    if (form.cron.trim() && !/^(\S+\s+){4}\S+$/.test(form.cron.trim())) {
-      return toast.error("cron 必须是 5 个空格分隔的字段（留空表示仅手动）");
+    if (form.cron.trim() && !isValidCron(form.cron.trim())) {
+      return toast.error("cron 不合法：必须是 5 个空格分隔的字段（留空表示仅手动）");
     }
     let options: CheckOptions;
     try {
@@ -302,111 +335,132 @@ function CheckDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-h-[88vh] max-w-3xl gap-5 overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "编辑检查任务" : "新建检查任务"}</DialogTitle>
+          <DialogDescription>
+            调用 rclone operations/check 比对两端差异，只报告、不修改任何文件。
+          </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>任务名称</Label>
-            <Input
-              value={form.name}
-              onChange={(e) => set("name", e.target.value)}
-              placeholder="daily-check"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Cron（留空 = 仅手动 / 前检）</Label>
-            <Input
-              className="font-mono"
-              placeholder="0 4 * * *"
-              value={form.cron}
-              onChange={(e) => set("cron", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>源数据源</Label>
-            <Select value={form.src} onValueChange={(v) => set("src", v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="选择…" />
-              </SelectTrigger>
-              <SelectContent>
-                {dataSources.map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>目标数据源</Label>
-            <Select value={form.dst} onValueChange={(v) => set("dst", v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="选择…" />
-              </SelectTrigger>
-              <SelectContent>
-                {dataSources.map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>源子路径</Label>
-            <Input
-              value={form.srcPath}
-              onChange={(e) => set("srcPath", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>目标子路径</Label>
-            <Input
-              value={form.dstPath}
-              onChange={(e) => set("dstPath", e.target.value)}
-            />
-          </div>
-        </div>
 
-        <div className="rounded-lg border p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <Label>检查选项</Label>
-            <div className="flex items-center gap-2">
-              <Label className="text-xs text-muted-foreground">启用</Label>
+        <DialogSection title="基本设置">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>任务名称</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder="daily-check"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>源数据源</Label>
+              <Select value={form.src} onValueChange={(v) => set("src", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dataSources.map((d) => (
+                    <SelectItem key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>源子路径</Label>
+              <Input
+                placeholder="/data"
+                value={form.srcPath}
+                onChange={(e) => set("srcPath", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>目标数据源</Label>
+              <Select value={form.dst} onValueChange={(v) => set("dst", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dataSources.map((d) => (
+                    <SelectItem key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>目标子路径</Label>
+              <Input
+                placeholder="/data"
+                value={form.dstPath}
+                onChange={(e) => set("dstPath", e.target.value)}
+              />
+            </div>
+          </div>
+        </DialogSection>
+
+        <DialogSection
+          title="执行计划"
+          hint="调度时区：UTC"
+        >
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            <CronField
+              label="Cron 计划"
+              optional
+              emptyHint="留空 = 不定时，仅手动或作为同步前检查触发"
+              value={form.cron}
+              onChange={(v) => set("cron", v)}
+            />
+            <div className="flex items-start justify-between rounded-lg border p-3">
+              <div>
+                <Label>启用</Label>
+                <p className="text-xs text-muted-foreground">停用后不参与计划与同步前检查</p>
+              </div>
               <Switch
                 checked={form.enabled}
                 onCheckedChange={(v) => set("enabled", v)}
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
-            {OPTION_META.map(({ key, label }) => (
-              <label
-                key={String(key)}
-                className="flex cursor-pointer items-center gap-2 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  className="h-3.5 w-3.5 accent-primary"
-                  checked={Boolean(parsedOptions[key])}
-                  onChange={() => toggleOption(key)}
-                />
-                {label}
-              </label>
+        </DialogSection>
+
+        <DialogSection title="检查选项" hint="勾选哪些差异类型会写入检查报告">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+            {OPTION_META.map(({ key, label, desc }) => (
+              <div key={String(key)} className="flex items-center gap-1.5">
+                <label className="flex flex-1 cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-primary"
+                    checked={Boolean(parsedOptions[key])}
+                    onChange={() => toggleOption(key)}
+                  />
+                  <span className="truncate">{label}</span>
+                </label>
+                <InfoTip title={label}>{desc}</InfoTip>
+              </div>
             ))}
           </div>
-          <Textarea
-            className="mt-3 font-mono text-xs"
-            rows={2}
-            value={form.options}
-            onChange={(e) => set("options", e.target.value)}
-          />
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            SUM 清单模式：设置 checkFileHash + checkFileFs + checkFileRemote（源端被忽略）
-          </p>
-        </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">
+              其他参数（JSON，含 SUM 清单模式：checkFileHash + checkFileFs + checkFileRemote）
+            </Label>
+            <Textarea
+              className="font-mono text-xs"
+              rows={2}
+              value={form.options}
+              onChange={(e) => set("options", e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              SUM 清单模式：设置 checkFileHash + checkFileFs + checkFileRemote（源端被忽略），
+              只按清单文件比对。
+            </p>
+          </div>
+        </DialogSection>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

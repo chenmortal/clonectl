@@ -3,12 +3,16 @@ import { Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
+import { CronField } from "@/components/shared/cron-field";
 import { DataPage } from "@/components/shared/data-page";
+import { DialogSection } from "@/components/shared/dialog-section";
+import { RcloneOptionsField } from "@/components/shared/rclone-options-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -23,16 +27,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { isValidCron } from "@/lib/cron";
 import { errMessage, http } from "@/lib/api";
 import type { CheckTask, DataSource, SyncTask } from "@/lib/types";
 import { fmtDateTime } from "@/lib/utils";
-
-const CRON_PRESETS = ["0 3 * * *", "0 * * * *", "*/30 * * * *", "0 2 * * 1", "0 0 1 * *"];
-
-function isValidCron(v: string): boolean {
-  return /^(\S+\s+){4}\S+$/.test(v.trim());
-}
 
 interface TaskForm {
   name: string;
@@ -254,7 +252,8 @@ function TaskDialog({
   const submit = async () => {
     if (!form.name.trim()) return toast.error("请输入任务名称");
     if (!form.src || !form.dst) return toast.error("请选择源与目标数据源");
-    if (!isValidCron(form.cron)) return toast.error("cron 必须是 5 个空格分隔的字段");
+    if (!isValidCron(form.cron))
+      return toast.error("cron 不合法：必须是 5 个空格分隔的字段（分 时 日 月 周）");
     let options: Record<string, unknown> = {};
     try {
       options = JSON.parse(form.options || "{}");
@@ -293,147 +292,134 @@ function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-h-[88vh] max-w-3xl gap-5 overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "编辑同步任务" : "新建同步任务"}</DialogTitle>
+          <DialogDescription>
+            按 cron 计划在两个数据源之间执行 rclone sync/copy，计划时间按 UTC 计算。
+          </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>任务名称</Label>
-            <Input
-              value={form.name}
-              onChange={(e) => set("name", e.target.value)}
-              placeholder="nightly-backup"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>模式</Label>
-            <Select
-              value={form.mode}
-              onValueChange={(v) => set("mode", v as "sync" | "copy")}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sync">sync（镜像，删除多余文件）</SelectItem>
-                <SelectItem value="copy">copy（仅复制）</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>源数据源</Label>
-            <Select value={form.src} onValueChange={(v) => set("src", v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="选择…" />
-              </SelectTrigger>
-              <SelectContent>
-                {dataSources.map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>目标数据源</Label>
-            <Select value={form.dst} onValueChange={(v) => set("dst", v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="选择…" />
-              </SelectTrigger>
-              <SelectContent>
-                {dataSources.map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>源子路径</Label>
-            <Input
-              placeholder="/data（数据源路径下的子路径）"
-              value={form.srcPath}
-              onChange={(e) => set("srcPath", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>目标子路径</Label>
-            <Input
-              placeholder="/data"
-              value={form.dstPath}
-              onChange={(e) => set("dstPath", e.target.value)}
-            />
-          </div>
-        </div>
 
-        <div className="grid grid-cols-2 items-end gap-4">
-          <div className="space-y-1.5">
-            <Label>Cron（5 字段，分 时 日 月 周）</Label>
-            <Input
-              className="font-mono"
-              value={form.cron}
-              onChange={(e) => set("cron", e.target.value)}
-            />
-            <div className="flex flex-wrap gap-1 pt-1">
-              {CRON_PRESETS.map((c) => (
-                <Button
-                  key={c}
-                  variant="secondary"
-                  size="sm"
-                  className="h-6 px-2 font-mono text-[11px]"
-                  onClick={() => set("cron", c)}
-                >
-                  {c}
-                </Button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <Label>启用</Label>
-                <p className="text-xs text-muted-foreground">停用后不再按计划执行</p>
-              </div>
-              <Switch
-                checked={form.enabled}
-                onCheckedChange={(v) => set("enabled", v)}
+        <DialogSection title="基本设置">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>任务名称</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder="nightly-backup"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>同步前一致性检查</Label>
-              <Select value={form.preCheck} onValueChange={(v) => set("preCheck", v)}>
+              <Label>模式</Label>
+              <Select
+                value={form.mode}
+                onValueChange={(v) => set("mode", v as "sync" | "copy")}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="不绑定" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">不绑定</SelectItem>
-                  {checkTasks.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}
+                  <SelectItem value="sync">sync（镜像，删除多余文件）</SelectItem>
+                  <SelectItem value="copy">copy（仅复制）</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>源数据源</Label>
+              <Select value={form.src} onValueChange={(v) => set("src", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dataSources.map((d) => (
+                    <SelectItem key={d.id} value={String(d.id)}>
+                      {d.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground">
-                两端一致跳过同步；发现差异继续；检查出错阻止同步
-              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>源子路径</Label>
+              <Input
+                placeholder="/data（数据源路径下的子路径）"
+                value={form.srcPath}
+                onChange={(e) => set("srcPath", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>目标数据源</Label>
+              <Select value={form.dst} onValueChange={(v) => set("dst", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dataSources.map((d) => (
+                    <SelectItem key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>目标子路径</Label>
+              <Input
+                placeholder="/data"
+                value={form.dstPath}
+                onChange={(e) => set("dstPath", e.target.value)}
+              />
             </div>
           </div>
-        </div>
+        </DialogSection>
 
-        <div className="space-y-1.5">
-          <Label>rclone 参数（JSON，作为 _config 传递）</Label>
-          <Textarea
-            className="font-mono text-xs"
-            rows={3}
-            placeholder='{"transfers": 4, "checkers": 8}'
+        <DialogSection title="执行计划" hint="调度时区：UTC">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            <CronField value={form.cron} onChange={(v) => set("cron", v)} />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <Label>启用</Label>
+                  <p className="text-xs text-muted-foreground">停用后不再按计划执行</p>
+                </div>
+                <Switch
+                  checked={form.enabled}
+                  onCheckedChange={(v) => set("enabled", v)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>同步前一致性检查</Label>
+                <Select value={form.preCheck} onValueChange={(v) => set("preCheck", v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="不绑定" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">不绑定</SelectItem>
+                    {checkTasks.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  两端一致跳过同步；发现差异继续；检查出错阻止同步
+                </p>
+              </div>
+            </div>
+          </div>
+        </DialogSection>
+
+        <DialogSection
+          title="rclone 参数（可选）"
+          hint="键名与 rclone 文档一致，后端按 _config/_filter 传递"
+        >
+          <RcloneOptionsField
             value={form.options}
-            onChange={(e) => set("options", e.target.value)}
+            onChange={(v) => set("options", v)}
           />
-        </div>
+        </DialogSection>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

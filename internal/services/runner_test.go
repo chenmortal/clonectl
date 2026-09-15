@@ -59,7 +59,8 @@ func TestRunTaskSuccess(t *testing.T) {
 	assert.Equal(t, "ds-1:/data/sub", rec[2].Body["srcFs"])
 	assert.Equal(t, "ds-2:/backup/sub", rec[2].Body["dstFs"], "trailing slash on ds.path stripped")
 	cfg := rec[2].Body["_config"].(map[string]any)
-	assert.EqualValues(t, 4, cfg["transfers"])
+	// 规范名 transfers 被翻译成 rc 线上字段名 Transfers(见 rclone client)。
+	assert.EqualValues(t, 4, cfg["Transfers"])
 
 	// Poll a finished job → success with the 7 stat keys only.
 	srv.SetJobStats(*run.JobID, map[string]any{

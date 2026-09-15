@@ -3,6 +3,7 @@ package rclone
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +36,46 @@ func TestStartSyncReturnsJobid(t *testing.T) {
 	assert.Equal(t, true, rec[0].Body["_async"])
 	cfg, ok := rec[0].Body["_config"].(map[string]any)
 	require.True(t, ok, "_config must carry options")
-	assert.EqualValues(t, 4, cfg["transfers"])
+	// 规范名 transfers 翻译成 rc 线上字段名 Transfers(fs.ConfigInfo 无 json 标签)。
+	assert.EqualValues(t, 4, cfg["Transfers"])
+}
+
+func TestStartSyncSplitsFilterOptions(t *testing.T) {
+	srv := rctest.New()
+	defer srv.Close()
+	c := newTestClient(t, srv)
+
+	options := map[string]any{
+		"transfers":   float64(8),
+		"dry_run":     true,
+		"min_size":    "1M",
+		"max_age":     "24h",
+		"what_is_this": true, // 未知键:原样进 _config,由 rclone 决定去留
+	}
+	_, err := c.StartSync("a", "b", "copy", options)
+	require.NoError(t, err)
+
+	rec := srv.Records()[0]
+	cfg, ok := rec.Body["_config"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "Transfers", keyOf(cfg, float64(8)))
+	assert.Equal(t, "DryRun", keyOf(cfg, true))
+	assert.Equal(t, "what_is_this", keyOf(cfg, true, "DryRun"))
+
+	flt, ok := rec.Body["_filter"].(map[string]any)
+	require.True(t, ok, "filter keys must ride in _filter")
+	assert.Equal(t, "MinSize", keyOf(flt, "1M"))
+	assert.Equal(t, "MaxAge", keyOf(flt, "24h"))
+}
+
+// keyOf finds the map key holding want (skipping skip keys); fails via t if absent.
+func keyOf(m map[string]any, want any, skip ...string) string {
+	for k, v := range m {
+		if !slices.Contains(skip, k) && assert.ObjectsAreEqual(want, v) {
+			return k
+		}
+	}
+	return "<missing>"
 }
 
 func TestStartSyncCopyMode(t *testing.T) {
