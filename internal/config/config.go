@@ -16,12 +16,11 @@ import (
 type Settings struct {
 	DatabaseURL string
 
-	RcloneRCURL     string
 	RcloneRCUser    string
 	RcloneRCPass    string
 	RcloneManaged   bool
 	RcloneBin       string
-	RcloneRCAddr    string
+	RcloneRCAddr    string // single address: managed=listen (dial derived); external=dial only
 	RcloneWebGUI    bool
 	PollInterval    int // seconds
 	CheckTimeout    int // seconds
@@ -56,7 +55,6 @@ func Load() Settings {
 	return Settings{
 		DatabaseURL: envStr("DATABASE_URL", "sqlite:///./rclone_sync.db"),
 
-		RcloneRCURL:   envStr("RCLONE_RC_URL", "http://localhost:5572"),
 		RcloneRCUser:  envStr("RCLONE_RC_USER", "admin"),
 		RcloneRCPass:  envStr("RCLONE_RC_PASS", "6051"),
 		RcloneManaged: envBool("RCLONE_MANAGED", true),

@@ -39,10 +39,10 @@ cp .env.example .env    # 按需修改
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `DATABASE_URL` | `sqlite:///./rclone_sync.db` | MySQL 示例：`mysql://user:pass@host:3306/db`（兼容 `sqlite:///`、`mysql+pymysql://` 旧写法） |
-| `RCLONE_RC_URL` | `http://localhost:5572` | rclone rcd 地址 |
+| `RCLONE_RC_ADDR` | `0.0.0.0:5572` | rclone 单一地址：托管时=rcd 监听地址（拨号地址自动派生）；`RCLONE_MANAGED=false` 时=外部 rcd 拨号地址（可带 `http(s)://` 前缀） |
 | `RCLONE_RC_USER` / `RCLONE_RC_PASS` | `admin` / `6051` | RC API 认证 |
 | `RCLONE_MANAGED` | `true` | `true` 时 `serve` 自动拉起/停止 rcd 子进程 |
-| `RCLONE_BIN` / `RCLONE_RC_ADDR` | `rclone` / `0.0.0.0:5572` | rcd 二进制 / 监听地址 |
+| `RCLONE_BIN` | `rclone` | rcd 二进制 |
 | `POLL_INTERVAL_SECONDS` | `10` | 运行中任务结果轮询间隔 |
 | `CHECK_TIMEOUT_SECONDS` | `3600` | 同步前检查阻塞上限 |
 | `API_HOST` / `API_PORT` | `0.0.0.0` / `8000` | API 监听地址 |

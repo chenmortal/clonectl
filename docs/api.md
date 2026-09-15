@@ -170,7 +170,7 @@
 
 ## 2. rclone RC 代理 /rclone
 
-主服务将 `/rclone/{path}` 反向代理到 rclone rcd（`RCLONE_RC_URL`，默认 `http://127.0.0.1:5572`），调用方无需直连 5572 端口，也无需提供 rclone 认证（由服务端注入 `RCLONE_RC_USER`/`RCLONE_RC_PASS`）。
+主服务将 `/rclone/{path}` 反向代理到 rclone rcd（地址由 `RCLONE_RC_ADDR` 派生，默认 `http://127.0.0.1:5572`），调用方无需直连 5572 端口，也无需提供 rclone 认证（由服务端注入 `RCLONE_RC_USER`/`RCLONE_RC_PASS`）。
 
 - 支持方法：GET / POST / PUT / DELETE / PATCH / OPTIONS / HEAD
 - 路径映射：`/rclone/sync/sync` → rcd `/sync/sync`；query 参数与请求体原样转发

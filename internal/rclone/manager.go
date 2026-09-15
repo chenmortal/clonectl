@@ -28,12 +28,13 @@ type Manager struct {
 	cmd *exec.Cmd
 }
 
-// NewManager builds a manager. rcAddr is the listen address; rcURL the
-// address clients dial.
-func NewManager(rcURL, rcAddr, user, pass, bin string) *Manager {
+// NewManager builds a manager from the single configured address. In managed
+// mode rcAddr is what rcd listens on (host:port; an optional URL scheme is
+// stripped); RCURL is derived from it for probes and clients.
+func NewManager(rcAddr, user, pass, bin string) *Manager {
 	return &Manager{
-		RCURL:   rcURL,
-		rcAddr:  rcAddr,
+		RCURL:   RCNormal(rcAddr),
+		rcAddr:  listenAddr(rcAddr),
 		user:    user,
 		pass:    pass,
 		bin:     bin,
@@ -42,12 +43,17 @@ func NewManager(rcURL, rcAddr, user, pass, bin string) *Manager {
 	}
 }
 
-// RCNormal maps wildcard listen hosts to a dialable loopback while
-// preserving the scheme (parity with Python _rc_url). Must return a URL —
-// callers use it for HTTP probes.
+// RCNormal turns a configured address into a dialable URL: "0.0.0.0:5572" →
+// "http://127.0.0.1:5572" (wildcard hosts map to loopback), "nas:5572" →
+// "http://nas:5572"; a full "http(s)://…" URL keeps its scheme (parity with
+// Python _rc_url). Must return a URL — callers use it for HTTP probes.
 func RCNormal(addr string) string {
-	u, err := url.Parse(addr)
-	if err != nil || u.Host == "" {
+	scheme, rest := "http", addr
+	if i := strings.Index(addr, "://"); i > 0 {
+		scheme, rest = addr[:i], addr[i+3:]
+	}
+	u, err := url.Parse(scheme + "://" + rest)
+	if err != nil || u.Hostname() == "" {
 		return addr
 	}
 	host := u.Hostname()
@@ -62,22 +68,52 @@ func RCNormal(addr string) string {
 	return u.String()
 }
 
+// listenAddr strips an optional URL scheme, leaving the host:port form that
+// rcd's --rc-addr expects.
+func listenAddr(addr string) string {
+	if i := strings.Index(addr, "://"); i > 0 {
+		return addr[i+3:]
+	}
+	return addr
+}
+
+// childEnv returns the parent environment minus this app's RCLONE_* config
+// vars. rclone maps RCLONE_* env onto its flags — an inherited RCLONE_RC_ADDR
+// overrides/double-applies our --rc-addr flag and makes rcd's rc server bind
+// against itself (EADDRINUSE on a free port). The child is configured by
+// flags only; unrelated vars (PATH, RCLONE_CONFIG_* remotes, …) pass through.
+func childEnv() []string {
+	var out []string
+	for _, kv := range os.Environ() {
+		switch {
+		case strings.HasPrefix(kv, "RCLONE_RC_"),
+			strings.HasPrefix(kv, "RCLONE_MANAGED="),
+			strings.HasPrefix(kv, "RCLONE_BIN="):
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
 // probe outcomes for the RC endpoint.
 type probeResult int
 
 const (
-	probeDown      probeResult = iota // nothing answering (conn refused/timeout/5xx)
-	probeOK                           // /core/version 200 — a compatible rcd is live
-	probeAuthFail                     // port alive but 401 — credentials differ
+	probeDown     probeResult = iota // nothing answering (conn refused/timeout)
+	probeOK                          // /core/version 200 — a compatible rcd is live
+	probeAuthFail                    // port alive but 401 — credentials differ
+	probeForeign                     // port alive but no RC route (404/5xx…) — foreign HTTP service
 )
 
-// probe distinguishes "nothing there" from "something there but auth
-// mismatch". Both are non-running for our purposes, but the latter must NOT
-// trigger a new rcd launch (the port is taken — bind would fail).
-func (m *Manager) probe() probeResult {
+// probe distinguishes "nothing there" from "something there that isn't our
+// rcd". Only a refused/timed-out dial may lead to a new rcd launch: any live
+// listener (401 mismatch, foreign HTTP service) already holds the port — the
+// child's bind would just CRITICAL-exit with "address already in use".
+func (m *Manager) probe() (probeResult, int) {
 	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(m.RCURL, "/")+"/core/version", bytes.NewReader([]byte("{}")))
 	if err != nil {
-		return probeDown
+		return probeDown, 0
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(m.user, m.pass)
@@ -85,27 +121,29 @@ func (m *Manager) probe() probeResult {
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return probeDown
+		return probeDown, 0
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized {
-		return probeAuthFail
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return probeOK, resp.StatusCode
+	case http.StatusUnauthorized:
+		return probeAuthFail, resp.StatusCode
+	default:
+		return probeForeign, resp.StatusCode
 	}
-	if resp.StatusCode == http.StatusOK {
-		return probeOK
-	}
-	return probeDown
 }
 
 // IsRunning probes the RC API readiness (200 on /core/version within 3s).
 func (m *Manager) IsRunning() bool {
-	return m.probe() == probeOK
+	res, _ := m.probe()
+	return res == probeOK
 }
 
 // Start launches rcd unless it is already answering. Waits up to waitTimeout
 // for readiness, polling every 500ms.
 func (m *Manager) Start(waitTimeout time.Duration) error {
-	switch m.probe() {
+	switch res, status := m.probe(); res {
 	case probeOK:
 		slog.Info("rclone rcd: already running, skipping start")
 		return nil
@@ -113,6 +151,10 @@ func (m *Manager) Start(waitTimeout time.Duration) error {
 		return fmt.Errorf(
 			"rclone rcd 端口已被占用且认证不匹配（%s 返回 401）：请确认 RCLONE_RC_USER/RCLONE_RC_PASS 与已运行实例一致，或将 RCLONE_RC_ADDR 换一个端口",
 			m.RCURL)
+	case probeForeign:
+		return fmt.Errorf(
+			"rclone rcd 端口已被其他 HTTP 服务占用（%s 的 /core/version 返回 %d，非 rclone RC API）：请停止占用该端口的服务，或将 RCLONE_RC_ADDR 换一个端口",
+			m.RCURL, status)
 	case probeDown:
 		// proceed to launch
 	}
@@ -140,6 +182,7 @@ func (m *Manager) Start(waitTimeout time.Duration) error {
 	cmd := exec.Command(m.bin, args...)
 	cmd.Stdout = log
 	cmd.Stderr = log
+	cmd.Env = childEnv()
 	cmd.SysProcAttr = detachedProcAttr()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start rclone rcd: %w", err)

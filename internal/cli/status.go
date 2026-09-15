@@ -24,10 +24,9 @@ var statusCmd = &cobra.Command{
 
 		// rclone rcd via RC API probe.
 		manager := rclone.NewManager(
-			rclone.RCNormal(cfg.RcloneRCURL), cfg.RcloneRCAddr,
-			cfg.RcloneRCUser, cfg.RcloneRCPass, cfg.RcloneBin)
+			cfg.RcloneRCAddr, cfg.RcloneRCUser, cfg.RcloneRCPass, cfg.RcloneBin)
 		if manager.IsRunning() {
-			fmt.Printf("rclone rcd: running (%s)\n", cfg.RcloneRCURL)
+			fmt.Printf("rclone rcd: running (%s)\n", manager.RCURL)
 		} else {
 			fmt.Println("rclone rcd: stopped")
 		}
