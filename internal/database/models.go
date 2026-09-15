@@ -44,7 +44,10 @@ const (
 	TriggerManual   = "manual"
 )
 
-const SettingAlertmanagerURL = "alertmanager_url"
+const (
+	SettingAlertmanagerURL = "alertmanager_url"
+	SettingSiteTitle       = "site_title"
+)
 
 // --- auth ---
 

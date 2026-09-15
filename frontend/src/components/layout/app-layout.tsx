@@ -32,6 +32,7 @@ import { healthz } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useGetIdentity, useLogout } from "@refinedev/core";
 import type { Identity } from "@/providers/auth";
+import { useSiteTitle } from "@/providers/site";
 
 const COLLAPSE_KEY = "rclone-sync.sidebar";
 
@@ -101,6 +102,7 @@ export function AppLayout() {
   const location = useLocation();
   const { mutate: logout } = useLogout();
   const { data: identity } = useGetIdentity<Identity>();
+  const siteTitle = useSiteTitle();
 
   const toggleCollapse = () => {
     setCollapsed((c) => {
@@ -126,7 +128,7 @@ export function AppLayout() {
             <PlayCircle className="h-6 w-6 shrink-0 text-primary" />
             {!collapsed && (
               <span className="truncate font-semibold tracking-tight">
-                rclone-sync
+                {siteTitle}
               </span>
             )}
           </div>
@@ -180,7 +182,7 @@ export function AppLayout() {
           )}
         >
           <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/80 px-6 backdrop-blur">
-            <h1 className="text-sm font-semibold">{current?.label ?? "rclone-sync"}</h1>
+            <h1 className="text-sm font-semibold">{current?.label ?? siteTitle}</h1>
             <div className="flex items-center gap-4">
               <RcdBadge />
               <Button

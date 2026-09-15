@@ -14,6 +14,7 @@
 - **实时监控**：运行中任务 5s 刷新进度/速度/ETA；执行历史与统计
 - **调度监控**（新增）：基于 gocron 的调度器面板 —— job 列表、下次执行预览、连续失败告警、手动运行（走与 trigger 相同的服务层）
 - **告警**：失败触发 / 成功解除，Alertmanager v4 webhook（`notified_at` 去重）
+- **系统设置**：站点标题自定义（侧边栏/登录页/浏览器标签）· 运行日志（rcd.log）尾部查看与整文件下载
 - **主备 HA**：两节点共享 MySQL，DB lease CAS 选举；备机读开放、写返回 503
 - **鉴权**：JWT + 三角色 RBAC（admin/edit/view）+ bootstrap admin
 - **rclone 代理**：`/rclone/*` 反向代理（服务端注入 Basic Auth，读全角色 / 写 admin）

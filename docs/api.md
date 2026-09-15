@@ -484,6 +484,49 @@ curl "http://localhost:8000/api/runs?task_id=1&status=failed&limit=20"
 
 ---
 
+## 8A. 站点信息与运行日志
+
+### 8A.1 站点信息（公开）
+
+`GET /api/site-info` — 无需鉴权，登录页/前端外壳读取品牌标题。
+
+```json
+{ "site_title": "我的同步台" }
+```
+
+未设置时 `site_title` 为空串，前端回退默认 `rclone-sync`。标题通过系统设置
+`PUT /api/system-settings/site_title`（admin）修改：自动去除首尾空白，最长
+100 字符（按 Unicode 字符计），留空恢复默认。
+
+### 8A.2 运行日志（admin）
+
+托管 rcd 的子进程日志写入服务进程工作目录的 `rcd.log`，同步/检查的全部
+输出都在其中。
+
+`GET /api/logs?lines=500` — 返回日志尾部：
+
+```json
+{
+  "file": "rcd.log",
+  "exists": true,
+  "size": 10500,
+  "mod_time": "2026-09-15T05:42:20",
+  "content": "2026/09/15 13:40:01 ...",
+  "truncated": false
+}
+```
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `lines` | 500 | 返回尾部行数，1–5000；返回内容超过 1MB 时按尾部截断并置 `truncated=true` |
+
+文件不存在（外部 rcd 模式或尚未启动）返回 `exists=false` 而非 404。
+
+`GET /api/logs/download` — 整个日志文件以附件形式流式下载
+（`Content-Disposition: attachment; filename="rcd.log"`）；文件不存在返回 404。
+
+---
+
 ## 9. 完整调用示例（端到端）
 
 ```bash

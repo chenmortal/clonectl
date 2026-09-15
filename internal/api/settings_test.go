@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -125,4 +126,38 @@ func TestAlertmanagerTestEndpoint(t *testing.T) {
 	assert.Equal(t, "ManualTest", labels["alertname"])
 	assert.Equal(t, "test", labels["env"])
 	assert.Equal(t, "critical", labels["severity"])
+}
+
+func TestSiteInfo(t *testing.T) {
+	d, r := newTestEnv(t)
+	mkUser(t, d, "root", "admin")
+
+	// Public and empty before configuration
+	w := doJSON(r, http.MethodGet, "/api/site-info", "", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	var out map[string]any
+	require.NoError(t, unmarshalBody(w, &out))
+	assert.Equal(t, "", out["site_title"])
+
+	// Admin sets the title; value is trimmed
+	token := login(t, r, "root", "pass1234")
+	w = doJSON(r, http.MethodPut, "/api/system-settings/site_title", token,
+		map[string]string{"value": "  我的同步台  "})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	// Still public for anonymous viewers (login page needs it)
+	w = doJSON(r, http.MethodGet, "/api/site-info", "", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NoError(t, unmarshalBody(w, &out))
+	assert.Equal(t, "我的同步台", out["site_title"])
+
+	// Over 100 runes → 422
+	w = doJSON(r, http.MethodPut, "/api/system-settings/site_title", token,
+		map[string]string{"value": strings.Repeat("标", 101)})
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+
+	// Exactly 100 runes → OK
+	w = doJSON(r, http.MethodPut, "/api/system-settings/site_title", token,
+		map[string]string{"value": strings.Repeat("标", 100)})
+	assert.Equal(t, http.StatusOK, w.Code)
 }

@@ -231,3 +231,19 @@ export interface UserOut {
   last_login_at: string | null;
   disabled_at: string | null;
 }
+
+// --- site info + rcd log ---------------------------------------------------
+
+export interface SiteInfo {
+  /** configurable brand title; empty → frontend default */
+  site_title: string;
+}
+
+export interface LogTail {
+  file: string;
+  exists: boolean;
+  size: number;
+  mod_time: string | null;
+  content: string;
+  truncated: boolean;
+}

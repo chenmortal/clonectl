@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -42,8 +43,22 @@ func (d *Deps) GetSetting(c *gin.Context) {
 	c.JSON(http.StatusOK, toSettingOut(&row))
 }
 
+// SiteInfo is public (pre-auth): the configurable brand title used by the
+// login page, the app shell and the browser tab. Empty value = frontend default.
+func (d *Deps) SiteInfo(c *gin.Context) {
+	var row database.SystemSetting
+	title := ""
+	if err := d.DB.First(&row, "key = ?", database.SettingSiteTitle).Error; err == nil {
+		title = row.Value
+	}
+	c.JSON(http.StatusOK, gin.H{"site_title": title})
+}
+
+// maxSiteTitleRunes caps the brand title (rune count, not bytes).
+const maxSiteTitleRunes = 100
+
 // UpsertSetting (admin) — records updated_by; alertmanager_url must be a
-// valid http(s) URL when non-empty.
+// valid http(s) URL when non-empty; site_title is trimmed and capped.
 func (d *Deps) UpsertSetting(c *gin.Context) {
 	var in struct {
 		Value string `json:"value"`
@@ -52,12 +67,21 @@ func (d *Deps) UpsertSetting(c *gin.Context) {
 		AbortInvalidJSON(c, err)
 		return
 	}
-	v := NewValidator()
-	v.Str("value", in.Value, StrOpt{Min: 0, Max: 4096})
-	if v.Abort(c) {
-		return
-	}
 	key := c.Param("key")
+	if key == database.SettingSiteTitle {
+		in.Value = strings.TrimSpace(in.Value)
+		if utf8.RuneCountInString(in.Value) > maxSiteTitleRunes {
+			AbortDetail(c, http.StatusUnprocessableEntity,
+				"site_title is limited to 100 characters")
+			return
+		}
+	} else {
+		v := NewValidator()
+		v.Str("value", in.Value, StrOpt{Min: 0, Max: 4096})
+		if v.Abort(c) {
+			return
+		}
+	}
 	if key == database.SettingAlertmanagerURL && in.Value != "" {
 		if msg := validateAlertmanagerURL(in.Value); msg != "" {
 			AbortDetail(c, http.StatusUnprocessableEntity, msg)
