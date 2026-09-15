@@ -153,6 +153,10 @@ func (m *Manager) Start(waitTimeout time.Duration) error {
 	waitCh := make(chan error, 1)
 	go func() { waitCh <- cmd.Wait() }()
 
+	// rclone v1.74 takes 2-3s to bind the socket after fork (logs "Serving
+	// remote control on …" arrive that late). Don't probe before that —
+	// early probes ECONNREFUSED and waste the budget.
+	ready := time.Now().Add(2 * time.Second)
 	deadline := time.Now().Add(waitTimeout)
 	for {
 		select {
@@ -162,7 +166,7 @@ func (m *Manager) Start(waitTimeout time.Duration) error {
 			return fmt.Errorf("rclone rcd exited early: %s", tailFile(m.logFile, 300))
 		default:
 		}
-		if m.IsRunning() {
+		if time.Now().After(ready) && m.IsRunning() {
 			return nil
 		}
 		if time.Now().After(deadline) {
