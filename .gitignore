@@ -1,8 +1,5 @@
 # ───────── Go ─────────
 /rclone-sync
-# Embedded frontend (rebuilt by `make web-dist`)
-dist/web/
-!dist/web/.gitkeep
 # Build / cache
 *.db
 *.db-shm
@@ -30,7 +27,12 @@ __pycache__/
 .env.local
 
 # ───────── Release artifacts ─────────
-dist/
+# dist/* 全忽略，但保留前端占位 dist/web/.gitkeep —— go:embed all:dist/web
+# 在零匹配时编译失败，占位保证全新 checkout 可编译（产物由 make release 重建）。
+dist/*
+!dist/web/
+dist/web/*
+!dist/web/.gitkeep
 
 # Local temp test data
 *.tmp

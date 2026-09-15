@@ -1,5 +1,6 @@
 # rclone-sync (Go) — build & release
 #
+# 本地联调：make debug（后端 :8000 + 前端 vite :5173 并行，Ctrl-C 同退）
 # 正式发布：make release
 #   前端构建(web/dist) → go:embed 内嵌 → CGO_ENABLED=0 交叉编译
 #   → dist/release/ 下生成 tar.gz(二进制+README+.env.example) + sha256sums.txt
@@ -13,7 +14,8 @@ LDFLAGS := -s -w \
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 RELEASE_DIR := dist/release
 
-.PHONY: help build test vet fmt web-dist all release clean verify-release
+.PHONY: help build test vet fmt web-dist all release clean verify-release \
+	debug debug-backend debug-frontend
 
 help: ## 显示各目标说明
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -40,6 +42,17 @@ web-dist: ## 构建前端 → dist/web（embed 数据源）
 	mv dist/web/src/* dist/web/ && rmdir dist/web/src 2>/dev/null || true
 
 all: web-dist build
+
+debug-backend: ## 后端调试启动（go run serve，API 默认 :8000，仅 API）
+	$(GO) run ./cmd/rclone-sync serve
+
+debug-frontend: ## 前端调试启动（vite :5173；/api /rclone /healthz 代理 → :8000，VITE_API_TARGET 可覆盖）
+	@test -d frontend/node_modules || \
+		npm --prefix frontend install --registry=https://registry.npmmirror.com
+	cd frontend && npm run dev
+
+debug: ## 前后端联调：并行起后端(:8000) + 前端(:5173)，Ctrl-C 同退
+	+@$(MAKE) debug-backend & $(MAKE) debug-frontend & wait
 
 ## 正式发布：前端内嵌 + 多平台二进制 + tar.gz + sha256
 release: web-dist verify-dist
