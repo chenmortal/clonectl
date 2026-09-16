@@ -124,7 +124,7 @@ func (a *App) Start() error {
 	// 7. Seed alertmanager_url system setting from env (row-absent only).
 	if cfg.AlertmanagerURL != "" {
 		var n int64
-		db.Model(&database.SystemSetting{}).Where("key = ?", database.SettingAlertmanagerURL).Count(&n)
+		db.Model(&database.SystemSetting{}).Where("setting_key = ?", database.SettingAlertmanagerURL).Count(&n)
 		if n == 0 {
 			if err := db.Create(&database.SystemSetting{
 				Key: database.SettingAlertmanagerURL, Value: cfg.AlertmanagerURL,

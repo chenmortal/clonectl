@@ -59,6 +59,13 @@ func TestAutoMigrateAndCRUD(t *testing.T) {
 	require.NoError(t, db.First(&gotRun, run.ID).Error)
 	assert.Equal(t, RunPending, gotRun.Status)
 	assert.Nil(t, gotRun.Stats)
+
+	// SystemSetting: raw column is setting_key (never the reserved `key`).
+	setting := SystemSetting{Key: "site_title", Value: "Rclone Sync"}
+	require.NoError(t, db.Create(&setting).Error)
+	var gotSetting SystemSetting
+	require.NoError(t, db.First(&gotSetting, "setting_key = ?", "site_title").Error)
+	assert.Equal(t, "Rclone Sync", gotSetting.Value)
 }
 
 func TestJSONObjectScanNilAndRaw(t *testing.T) {
@@ -72,4 +79,31 @@ func TestJSONObjectScanNilAndRaw(t *testing.T) {
 	// Malformed JSON is preserved under "raw" instead of erroring.
 	require.NoError(t, j.Scan([]byte(`not-json`)))
 	assert.Equal(t, "not-json", j["raw"])
+}
+
+// Old installs carry system_settings_v2 with a `key` primary key (a MySQL
+// reserved word). AutoMigrate must rename it in place — adding setting_key
+// as a new PK column would fail on SQLite — and keep the data.
+func TestAutoMigrateRenamesLegacySettingKeyColumn(t *testing.T) {
+	db := openTestDB(t)
+
+	require.NoError(t, db.Exec("CREATE TABLE system_settings_v2 (" +
+		"`key` varchar(128) NOT NULL PRIMARY KEY, " +
+		"`value` text NOT NULL, " +
+		"updated_at datetime, updated_by_user_id integer)").Error)
+	require.NoError(t, db.Exec("INSERT INTO system_settings_v2 " +
+		"(`key`, `value`, updated_at) VALUES ('site_title', 'Legacy', '2026-01-02 03:04:05')").Error)
+
+	require.NoError(t, AutoMigrate(db))
+
+	mig := db.Migrator()
+	assert.True(t, mig.HasColumn(&SystemSetting{}, "setting_key"))
+	assert.False(t, mig.HasColumn(&SystemSetting{}, "key")) // raw name → old column gone
+
+	var n int64
+	require.NoError(t, db.Model(&SystemSetting{}).Where("setting_key = ?", "site_title").Count(&n).Error)
+	assert.Equal(t, int64(1), n) // legacy row survived the rename
+
+	// Re-running stays green (rename guard is a no-op once renamed).
+	require.NoError(t, AutoMigrate(db))
 }

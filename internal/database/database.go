@@ -46,7 +46,28 @@ func Open(dialect, dsn string) (*gorm.DB, error) {
 // AutoMigrate creates/updates all tables (create-only semantics for
 // existing data, mirroring the Python create_all behavior).
 func AutoMigrate(db *gorm.DB) error {
+	if err := renameSystemSettingKeyColumn(db); err != nil {
+		return err
+	}
 	return db.AutoMigrate(AllModels()...)
+}
+
+// renameSystemSettingKeyColumn renames system_settings_v2.key → setting_key
+// ahead of AutoMigrate. The old column name is a reserved word on MySQL
+// (any ORDER BY key / WHERE key = ? fails to parse), and GORM would
+// otherwise try to ADD the new setting_key primary-key column to existing
+// tables, which fails on SQLite and corrupts rows on MySQL.
+func renameSystemSettingKeyColumn(db *gorm.DB) error {
+	mig := db.Migrator()
+	if !mig.HasTable(&SystemSetting{}) ||
+		!mig.HasColumn(&SystemSetting{}, "key") || // raw name → old column
+		mig.HasColumn(&SystemSetting{}, "setting_key") {
+		return nil // fresh install, or already renamed (re-run is a no-op)
+	}
+	if err := mig.RenameColumn(&SystemSetting{}, "key", "setting_key"); err != nil {
+		return fmt.Errorf("rename system_settings_v2.key to setting_key: %w", err)
+	}
+	return nil
 }
 
 // NowUTC is the app-wide clock (naive UTC semantics like the Python side).

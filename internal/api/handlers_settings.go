@@ -22,7 +22,7 @@ func toSettingOut(s *database.SystemSetting) gin.H {
 // ListSettings (admin) — ordered by key.
 func (d *Deps) ListSettings(c *gin.Context) {
 	var rows []database.SystemSetting
-	if err := d.DB.Order("key").Find(&rows).Error; err != nil {
+	if err := d.DB.Order("setting_key").Find(&rows).Error; err != nil {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -36,7 +36,7 @@ func (d *Deps) ListSettings(c *gin.Context) {
 // GetSetting (admin).
 func (d *Deps) GetSetting(c *gin.Context) {
 	var row database.SystemSetting
-	if err := d.DB.First(&row, "key = ?", c.Param("key")).Error; err != nil {
+	if err := d.DB.First(&row, "setting_key = ?", c.Param("key")).Error; err != nil {
 		AbortDetail(c, http.StatusNotFound, "setting not found")
 		return
 	}
@@ -48,7 +48,7 @@ func (d *Deps) GetSetting(c *gin.Context) {
 func (d *Deps) SiteInfo(c *gin.Context) {
 	var row database.SystemSetting
 	title := ""
-	if err := d.DB.First(&row, "key = ?", database.SettingSiteTitle).Error; err == nil {
+	if err := d.DB.First(&row, "setting_key = ?", database.SettingSiteTitle).Error; err == nil {
 		title = row.Value
 	}
 	c.JSON(http.StatusOK, gin.H{"site_title": title})
@@ -91,7 +91,7 @@ func (d *Deps) UpsertSetting(c *gin.Context) {
 
 	user := CurrentUser(c)
 	var row database.SystemSetting
-	if err := d.DB.First(&row, "key = ?", key).Error; err != nil {
+	if err := d.DB.First(&row, "setting_key = ?", key).Error; err != nil {
 		row = database.SystemSetting{Key: key, Value: in.Value}
 	} else {
 		row.Value = in.Value
