@@ -29,7 +29,7 @@ func ToISOZ(t *time.Time) string {
 // GetAlertmanagerURL reads the system setting ("" = disabled).
 func GetAlertmanagerURL(db *gorm.DB) string {
 	var row database.SystemSetting
-	if err := db.First(&row, "key = ?", database.SettingAlertmanagerURL).Error; err != nil {
+	if err := db.First(&row, "setting_key = ?", database.SettingAlertmanagerURL).Error; err != nil {
 		return ""
 	}
 	return row.Value

@@ -110,7 +110,7 @@ func (DataSourceBinding) TableName() string { return "data_source_bindings_v2" }
 // --- system settings ---
 
 type SystemSetting struct {
-	Key             string    `gorm:"size:128;primaryKey" json:"key"`
+	Key             string    `gorm:"column:setting_key;size:128;primaryKey" json:"key"` // column renamed: `key` is a MySQL reserved word
 	Value           string    `gorm:"not null" json:"value"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	UpdatedByUserID *int64    `json:"updated_by_user_id"`
