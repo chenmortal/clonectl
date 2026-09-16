@@ -51,7 +51,10 @@ func localFSRoot(src *database.StorageSource) string {
 //
 // type="s3": provider comes from extra (required, validated at the API
 // layer; "Other" kept as a legacy fallback for rows created before the
-// constraint existed).
+// constraint existed). list_version defaults to "1" — the classic
+// ListObjects — because rclone's provider-based auto mode picks
+// ListObjectsV2 for old OSS builds that don't implement it; a list_version
+// in extra wins.
 func BuildRemoteParameters(src *database.StorageSource, ds *database.DataSource) database.JSONObject {
 	params := src.Extra.Clone()
 	if src.Endpoint != nil {
@@ -67,6 +70,9 @@ func BuildRemoteParameters(src *database.StorageSource, ds *database.DataSource)
 		// rclone S3 requires an explicit provider unless endpoint is set.
 		if _, ok := params["provider"]; !ok {
 			params["provider"] = "Other"
+		}
+		if _, ok := params["list_version"]; !ok {
+			params["list_version"] = "1"
 		}
 	}
 	params["access_key_id"] = strOrEmpty(ds.AccessKeyID)
