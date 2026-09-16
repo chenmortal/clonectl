@@ -18,14 +18,12 @@ func TestParseDatabaseURL(t *testing.T) {
 		{"sqlite memory", "sqlite:///:memory:", "sqlite", "file::memory:?cache=shared"},
 		{"sqlite empty", "sqlite://", "sqlite", "file::memory:?cache=shared"},
 		{"bare file", "./local.db", "sqlite", "file:./local.db?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)"},
-		{"mysql plain", "mysql://user:pass@dbhost:3307/rclone", "mysql",
-			"user:pass@tcp(dbhost:3307)/rclone?parseTime=true&loc=UTC&charset=utf8mb4"},
-		{"mysql pymysql driver suffix", "mysql+pymysql://user:pass@dbhost/rclone?kw=1", "mysql",
-			"user:pass@tcp(dbhost:3306)/rclone?parseTime=true&loc=UTC&charset=utf8mb4&kw=1"},
-		{"mysql default port", "mysql://u@127.0.0.1/db", "mysql",
-			"u@tcp(127.0.0.1:3306)/db?parseTime=true&loc=UTC&charset=utf8mb4"},
-		{"native go dsn passthrough", "user:pass@tcp(10.0.0.1:3306)/rclone_sync", "mysql",
+		{"go dsn passthrough", "user:pass@tcp(10.0.0.1:3306)/rclone_sync", "mysql",
 			"user:pass@tcp(10.0.0.1:3306)/rclone_sync?parseTime=true&loc=UTC&charset=utf8mb4"},
+		{"go dsn special-char username", "root@tmast#ob:pass@tcp(host:3306)/rclone_sync", "mysql",
+			"root@tmast#ob:pass@tcp(host:3306)/rclone_sync?parseTime=true&loc=UTC&charset=utf8mb4"},
+		{"go dsn with existing params", "user:pass@tcp(10.0.0.1:3306)/rclone_sync?kw=1", "mysql",
+			"user:pass@tcp(10.0.0.1:3306)/rclone_sync?kw=1&parseTime=true&loc=UTC&charset=utf8mb4"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -47,4 +45,10 @@ func TestParseDatabaseURLEmptyDefaultsToSQLite(t *testing.T) {
 func TestParseDatabaseURLUnsupported(t *testing.T) {
 	_, _, err := ParseDatabaseURL("postgres://u@h/db")
 	assert.Error(t, err)
+}
+
+func TestParseDatabaseURLRejectsMySQLURL(t *testing.T) {
+	_, _, err := ParseDatabaseURL("mysql://root@tmast#ob:pass@host:3306/rclone_sync")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tcp(host:3306)")
 }

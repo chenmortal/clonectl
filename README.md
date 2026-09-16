@@ -39,7 +39,7 @@ cp .env.example .env    # 按需修改
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///./rclone_sync.db` | MySQL 示例：`mysql://user:pass@host:3306/db`（兼容 `sqlite:///`、`mysql+pymysql://` 旧写法） |
+| `DATABASE_URL` | `sqlite:///./rclone_sync.db` | MySQL 用 Go DSN：`user:pass@tcp(host:3306)/db`（凭据里的 `@` `#` 等字符原样填写，无需转义；兼容 `sqlite:///` 写法） |
 | `RCLONE_RC_ADDR` | `0.0.0.0:5572` | rclone 单一地址：托管时=rcd 监听地址（拨号地址自动派生）；`RCLONE_MANAGED=false` 时=外部 rcd 拨号地址（可带 `http(s)://` 前缀） |
 | `RCLONE_RC_USER` / `RCLONE_RC_PASS` | `admin` / `6051` | RC API 认证 |
 | `RCLONE_MANAGED` | `true` | `true` 时 `serve` 自动拉起/停止 rcd 子进程 |
@@ -115,9 +115,9 @@ CAS 选举，无需 etcd/keepalived。代码：`internal/cluster`。
 
 ```bash
 # 节点 A
-NODE_ID=nodeA CLUSTER_NAME=rclone-sync DATABASE_URL='mysql://user:pass@db/rclone_sync' ./rclone-sync serve
+NODE_ID=nodeA CLUSTER_NAME=rclone-sync DATABASE_URL='user:pass@tcp(db:3306)/rclone_sync' ./rclone-sync serve
 # 节点 B（同一 DB）
-NODE_ID=nodeB CLUSTER_NAME=rclone-sync DATABASE_URL='mysql://user:pass@db/rclone_sync' API_PORT=8001 ./rclone-sync serve
+NODE_ID=nodeB CLUSTER_NAME=rclone-sync DATABASE_URL='user:pass@tcp(db:3306)/rclone_sync' API_PORT=8001 ./rclone-sync serve
 # 故障演练：kill nodeA，约 lease 周期后
 curl :8001/healthz | jq '.is_leader'   # true
 ```
