@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { DataPage, StatusDot } from "@/components/shared/data-page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -87,7 +86,6 @@ function SyncRuns() {
   const [statusFilter, setStatusFilter] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
-  const [jump, setJump] = React.useState("");
   const { data: tasks } = useList<SyncTask>({ resource: "tasks" });
 
   const [pageData, setPageData] = React.useState<RunPage<RunDetail>>({
@@ -147,8 +145,6 @@ function SyncRuns() {
       toast.error((e as Error).message);
     }
   };
-
-  const totalPages = Math.max(1, Math.ceil(pageData.total / pageData.page_size));
 
   const rows = pageData.items.map((r) => [
     <span key="i" className="text-xs text-muted-foreground">
@@ -239,79 +235,18 @@ function SyncRuns() {
         rows={rows}
         getKey={(i) => pageData.items[i].id}
         loading={loading}
-      />
-      <PaginationBar
-        page={pageData.page}
-        pageSize={pageData.page_size}
-        total={pageData.total}
-        totalPages={totalPages}
-        onPageChange={(p) => setPage(p)}
-        onPageSizeChange={(s) => setPageSize(s)}
-        jump={jump}
-        onJump={setJump}
+        paging={{
+          page: pageData.page,
+          pageSize: pageData.page_size,
+          total: pageData.total,
+          onPageChange: (p) => setPage(p),
+          onPageSizeChange: (s) => setPageSize(s),
+        }}
       />
       {openId !== null && (
         <RunDetailSheet runId={openId} onClose={() => setOpenId(null)} />
       )}
     </>
-  );
-}
-
-// --- pagination bar -------------------------------------------------------
-
-interface PaginationBarProps {
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-  onPageChange: (p: number) => void;
-  onPageSizeChange: (s: number) => void;
-  jump: string;
-  onJump: (s: string) => void;
-}
-
-function PaginationBar(props: PaginationBarProps) {
-  const { page, pageSize, total, totalPages, onPageChange, onPageSizeChange, jump, onJump } = props;
-  return (
-    <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-      <span>
-        共 <b className="text-foreground">{total}</b> 条 · 第 {page} / {totalPages} 页
-      </span>
-      <div className="flex items-center gap-2">
-        <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-          <SelectTrigger className="h-8 w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[10, 20, 50, 100].map((n) => (
-              <SelectItem key={n} value={String(n)}>{n}/页</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-          上一页
-        </Button>
-        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
-          下一页
-        </Button>
-        <Input
-          className="h-8 w-16 text-center"
-          value={jump}
-          onChange={(e) => onJump(e.target.value.replace(/\D/g, ""))}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              const n = Number(jump);
-              if (n >= 1 && n <= totalPages) onPageChange(n);
-            }
-          }}
-          placeholder="页"
-        />
-        <Button variant="outline" size="sm" onClick={() => {
-          const n = Number(jump);
-          if (n >= 1 && n <= totalPages) onPageChange(n);
-        }}>跳转</Button>
-      </div>
-    </div>
   );
 }
 
@@ -435,7 +370,6 @@ function CheckRuns() {
   const [statusFilter, setStatusFilter] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
-  const [jump, setJump] = React.useState("");
   const { data: tasks } = useList<CheckTask>({ resource: "check-tasks" });
 
   const [pageData, setPageData] = React.useState<RunPage<CheckDetail>>({
@@ -491,8 +425,6 @@ function CheckRuns() {
       toast.error((e as Error).message);
     }
   };
-
-  const totalPages = Math.max(1, Math.ceil(pageData.total / pageData.page_size));
 
   const [openId, setOpenId] = React.useState<number | null>(null);
   const taskName = (id: number) =>
@@ -573,16 +505,13 @@ function CheckRuns() {
         rows={rows}
         getKey={(i) => pageData.items[i].id}
         loading={loading}
-      />
-      <PaginationBar
-        page={pageData.page}
-        pageSize={pageData.page_size}
-        total={pageData.total}
-        totalPages={totalPages}
-        onPageChange={(p) => setPage(p)}
-        onPageSizeChange={(s) => setPageSize(s)}
-        jump={jump}
-        onJump={setJump}
+        paging={{
+          page: pageData.page,
+          pageSize: pageData.page_size,
+          total: pageData.total,
+          onPageChange: (p) => setPage(p),
+          onPageSizeChange: (s) => setPageSize(s),
+        }}
       />
       {openId !== null && (
         <CheckDetailSheet checkId={openId} onClose={() => setOpenId(null)} />

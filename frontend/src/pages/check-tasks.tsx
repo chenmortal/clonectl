@@ -1,5 +1,5 @@
 import { useInvalidate, useList } from "@refinedev/core";
-import { Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Play, Plus, Trash2, Users2 } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -7,6 +7,7 @@ import { CronField } from "@/components/shared/cron-field";
 import { DataPage } from "@/components/shared/data-page";
 import { DialogSection } from "@/components/shared/dialog-section";
 import { InfoTip } from "@/components/shared/info-tip";
+import { TaskBindingsSheet } from "@/components/shared/task-bindings-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -108,6 +109,7 @@ export default function CheckTasks() {
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<CheckTask | null>(null);
   const [triggering, setTriggering] = React.useState<number | null>(null);
+  const [binding, setBinding] = React.useState<CheckTask | null>(null);
 
   const dsName = (id: number | null) =>
     id === null ? "-" : dsList?.data.find((d) => d.id === id)?.name ?? `#${id}`;
@@ -201,6 +203,14 @@ export default function CheckTasks() {
       <Button
         variant="ghost"
         size="icon-sm"
+        title="权限绑定"
+        onClick={() => setBinding(t)}
+      >
+        <Users2 />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
         title="删除"
         className="text-destructive"
         onClick={() => doDelete(t)}
@@ -244,6 +254,13 @@ export default function CheckTasks() {
         storageSources={srcList?.data ?? []}
         onClose={() => setOpen(false)}
       />
+      {binding && (
+        <TaskBindingsSheet
+          task={binding}
+          kind="check"
+          onClose={() => setBinding(null)}
+        />
+      )}
     </>
   );
 }
