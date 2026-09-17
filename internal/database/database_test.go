@@ -107,3 +107,67 @@ func TestAutoMigrateRenamesLegacySettingKeyColumn(t *testing.T) {
 	// Re-running stays green (rename guard is a no-op once renamed).
 	require.NoError(t, AutoMigrate(db))
 }
+
+// TestAutoMigrateAddsCreatorUserIDOnExistingTables reproduces the dev-DB
+// upgrade path: a sync_tasks_v2 / check_tasks_v2 row already exists when
+// the new build (which adds creator_user_id NOT NULL) is started. SQLite
+// rejects ADD NOT NULL without a default; the field has default:0 so the
+// ALTER TABLE runs cleanly and the legacy row keeps working.
+func TestAutoMigrateAddsCreatorUserIDOnExistingTables(t *testing.T) {
+	db := openTestDB(t)
+
+	// Hand-craft the previous schema (no creator_user_id) + one legacy row.
+	require.NoError(t, db.Exec(`
+		CREATE TABLE sync_tasks_v2 (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			src_data_source_id INTEGER NOT NULL,
+			src_path TEXT NOT NULL,
+			dst_data_source_id INTEGER NOT NULL,
+			dst_path TEXT NOT NULL,
+			mode TEXT NOT NULL,
+			cron TEXT NOT NULL,
+			enabled INTEGER NOT NULL,
+			rclone_options TEXT NOT NULL,
+			pre_check_task_id INTEGER,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE check_tasks_v2 (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			src_data_source_id INTEGER NOT NULL,
+			src_path TEXT NOT NULL,
+			dst_data_source_id INTEGER NOT NULL,
+			dst_path TEXT NOT NULL,
+			cron TEXT,
+			enabled INTEGER NOT NULL,
+			check_options TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO sync_tasks_v2
+		(name, src_data_source_id, src_path, dst_data_source_id, dst_path, mode, cron, enabled, rclone_options, created_at, updated_at)
+		VALUES ('legacy', 1, '/a', 2, '/b', 'sync', '0 3 * * *', 1, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO check_tasks_v2
+		(name, src_data_source_id, src_path, dst_data_source_id, dst_path, cron, enabled, check_options, created_at, updated_at)
+		VALUES ('legacy', 1, '/a', 2, '/b', NULL, 1, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).Error)
+
+	// Upgrading a DB that already has rows must not fail with
+	// "Cannot add a NOT NULL column with default value NULL".
+	require.NoError(t, AutoMigrate(db))
+
+	mig := db.Migrator()
+	require.True(t, mig.HasColumn(&SyncTask{}, "creator_user_id"))
+	require.True(t, mig.HasColumn(&CheckTask{}, "creator_user_id"))
+	// Legacy row survives with creator_user_id = 0.
+	var got SyncTask
+	require.NoError(t, db.First(&got).Error)
+	assert.EqualValues(t, 0, got.CreatorUserID)
+	var gotCheck CheckTask
+	require.NoError(t, db.First(&gotCheck).Error)
+	assert.EqualValues(t, 0, gotCheck.CreatorUserID)
+	// Re-running stays green.
+	require.NoError(t, AutoMigrate(db))
+}

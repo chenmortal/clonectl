@@ -135,7 +135,9 @@ type SyncTask struct {
 	// CreatorUserID is recorded on creation but does NOT grant access by itself.
 	// Access is governed by sync_task_bindings_v2 (a default admin row is
 	// inserted for the creator at create time and may be revoked).
-	CreatorUserID  int64     `gorm:"not null;index" json:"creator_user_id"`
+	// default:0 keeps SQLite's ALTER TABLE ADD NOT NULL happy for pre-existing
+	// rows in dev DBs; the value is purely informational.
+	CreatorUserID  int64     `gorm:"not null;default:0;index" json:"creator_user_id"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -168,7 +170,9 @@ type CheckTask struct {
 	CheckOptions    JSONObject `gorm:"not null" json:"check_options"`
 	// CreatorUserID is recorded on creation; access is governed by
 	// check_task_bindings_v2 (default admin row for the creator).
-	CreatorUserID int64     `gorm:"not null;index" json:"creator_user_id"`
+	// default:0 keeps SQLite's ALTER TABLE ADD NOT NULL happy for pre-existing
+	// rows; the value is purely informational.
+	CreatorUserID int64     `gorm:"not null;default:0;index" json:"creator_user_id"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
