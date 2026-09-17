@@ -53,7 +53,11 @@ func TestDataSourceCRUD(t *testing.T) {
 		"access_key_id": "ak", "secret_access_key": "sk",
 	})
 	dsID := int(ds["id"].(float64))
-	assert.EqualValues(t, 1, ds["owner_user_id"], "owner = creator")
+	// Creator receives an admin binding by default.
+	var bs []database.DataSourceBinding
+	require.NoError(t, d.DB.Where("data_source_id = ? AND user_id = ?", dsID, 1).Find(&bs).Error)
+	require.Len(t, bs, 1)
+	assert.Equal(t, database.PermissionAdmin, bs[0].Permission)
 
 	// Missing AK/SK on s3 → 400
 	w := doJSON(r, http.MethodPost, "/api/data-sources", admin, map[string]any{

@@ -138,9 +138,12 @@ func TestTaskTrigger202AndPreCheck(t *testing.T) {
 	srv.SetJobStats(int64(run["job_id"].(float64)), map[string]any{"bytes": float64(5)})
 	w = doJSON(r, http.MethodGet, "/api/runs?task_id="+itoa(int(task.ID)), admin, nil)
 	require.Equal(t, http.StatusOK, w.Code)
-	var rows []map[string]any
-	require.NoError(t, unmarshalBody(w, &rows))
-	require.Len(t, rows, 1)
+	var page struct {
+		Items []map[string]any `json:"items"`
+		Total int64            `json:"total"`
+	}
+	require.NoError(t, unmarshalBody(w, &page))
+	require.Len(t, page.Items, 1)
 
 	w = doJSON(r, http.MethodGet, "/api/runs/"+itoa(int(run["id"].(float64))), admin, nil)
 	require.Equal(t, http.StatusOK, w.Code)
@@ -232,9 +235,12 @@ func TestCheckTaskCRUDAndTrigger(t *testing.T) {
 	// Checks listing
 	w = doJSON(r, http.MethodGet, "/api/checks", admin, nil)
 	require.Equal(t, http.StatusOK, w.Code)
-	var rows []map[string]any
-	require.NoError(t, unmarshalBody(w, &rows))
-	assert.Len(t, rows, 1)
+	var page struct {
+		Items []map[string]any `json:"items"`
+		Total int64            `json:"total"`
+	}
+	require.NoError(t, unmarshalBody(w, &page))
+	assert.Len(t, page.Items, 1)
 
 	// Check detail with live
 	w = doJSON(r, http.MethodGet, "/api/checks/"+itoa(int(check["id"].(float64))), admin, nil)

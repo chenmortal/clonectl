@@ -1,10 +1,12 @@
 import { useInvalidate, useOne, useList } from "@refinedev/core";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, Download, RefreshCw } from "lucide-react";
 import * as React from "react";
+import { toast } from "sonner";
 
 import { DataPage, StatusDot } from "@/components/shared/data-page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -38,6 +40,13 @@ import type {
 import { fmtBytes, fmtDateTime, fmtDuration } from "@/lib/utils";
 
 const STATUSES: RunStatus[] = ["running", "success", "failed", "skipped", "pending"];
+
+interface RunPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
 
 function statusTone(s: RunStatus) {
   switch (s) {
@@ -76,26 +85,72 @@ export default function Runs() {
 function SyncRuns() {
   const [taskFilter, setTaskFilter] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("");
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(20);
+  const [jump, setJump] = React.useState("");
   const { data: tasks } = useList<SyncTask>({ resource: "tasks" });
 
-  const { data, isLoading } = useList<RunDetail>({
-    resource: "runs",
-    queryOptions: { refetchInterval: 8000 },
-    meta: {
-      params: {
-        ...(taskFilter ? { task_id: taskFilter } : {}),
-        ...(statusFilter ? { status: statusFilter } : {}),
-        limit: 200,
-      },
-    },
+  const [pageData, setPageData] = React.useState<RunPage<RunDetail>>({
+    items: [], total: 0, page: 1, page_size: 20,
   });
+  const [loading, setLoading] = React.useState(true);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const { http } = await import("@/lib/api");
+      const { data } = await http.get<RunPage<RunDetail>>("/api/runs", {
+        params: {
+          ...(taskFilter ? { task_id: taskFilter } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+          page, page_size: pageSize,
+        },
+      });
+      setPageData(data);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [taskFilter, statusFilter, page, pageSize]);
+
+  React.useEffect(() => {
+    load();
+    const id = setInterval(load, 8000);
+    return () => clearInterval(id);
+  }, [load]);
+
+  React.useEffect(() => { setPage(1); }, [taskFilter, statusFilter, pageSize]);
 
   const [openId, setOpenId] = React.useState<number | null>(null);
-
   const taskName = (id: number) =>
     tasks?.data.find((t) => t.id === id)?.name ?? `#${id}`;
 
-  const rows = data?.data.map((r) => [
+  const exportCSV = async () => {
+    try {
+      const { http } = await import("@/lib/api");
+      const res = await http.get("/api/runs/export.csv", {
+        params: {
+          ...(taskFilter ? { task_id: taskFilter } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+        },
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sync-runs-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(pageData.total / pageData.page_size));
+
+  const rows = pageData.items.map((r) => [
     <span key="i" className="text-xs text-muted-foreground">
       #{r.id}
     </span>,
@@ -167,6 +222,9 @@ function SyncRuns() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" size="sm" onClick={exportCSV}>
+              <Download /> 导出 CSV
+            </Button>
           </>
         }
         columns={[
@@ -179,13 +237,81 @@ function SyncRuns() {
           { key: "actions", label: "", className: "text-right" },
         ]}
         rows={rows}
-        getKey={(i) => data!.data[i].id}
-        loading={isLoading}
+        getKey={(i) => pageData.items[i].id}
+        loading={loading}
+      />
+      <PaginationBar
+        page={pageData.page}
+        pageSize={pageData.page_size}
+        total={pageData.total}
+        totalPages={totalPages}
+        onPageChange={(p) => setPage(p)}
+        onPageSizeChange={(s) => setPageSize(s)}
+        jump={jump}
+        onJump={setJump}
       />
       {openId !== null && (
         <RunDetailSheet runId={openId} onClose={() => setOpenId(null)} />
       )}
     </>
+  );
+}
+
+// --- pagination bar -------------------------------------------------------
+
+interface PaginationBarProps {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  onPageChange: (p: number) => void;
+  onPageSizeChange: (s: number) => void;
+  jump: string;
+  onJump: (s: string) => void;
+}
+
+function PaginationBar(props: PaginationBarProps) {
+  const { page, pageSize, total, totalPages, onPageChange, onPageSizeChange, jump, onJump } = props;
+  return (
+    <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+      <span>
+        共 <b className="text-foreground">{total}</b> 条 · 第 {page} / {totalPages} 页
+      </span>
+      <div className="flex items-center gap-2">
+        <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
+          <SelectTrigger className="h-8 w-24">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[10, 20, 50, 100].map((n) => (
+              <SelectItem key={n} value={String(n)}>{n}/页</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          上一页
+        </Button>
+        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          下一页
+        </Button>
+        <Input
+          className="h-8 w-16 text-center"
+          value={jump}
+          onChange={(e) => onJump(e.target.value.replace(/\D/g, ""))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              const n = Number(jump);
+              if (n >= 1 && n <= totalPages) onPageChange(n);
+            }
+          }}
+          placeholder="页"
+        />
+        <Button variant="outline" size="sm" onClick={() => {
+          const n = Number(jump);
+          if (n >= 1 && n <= totalPages) onPageChange(n);
+        }}>跳转</Button>
+      </div>
+    </div>
   );
 }
 
@@ -307,26 +433,72 @@ function RunDetailSheet({ runId, onClose }: { runId: number; onClose: () => void
 function CheckRuns() {
   const [taskFilter, setTaskFilter] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("");
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(20);
+  const [jump, setJump] = React.useState("");
   const { data: tasks } = useList<CheckTask>({ resource: "check-tasks" });
 
-  const { data, isLoading } = useList<CheckDetail>({
-    resource: "checks",
-    queryOptions: { refetchInterval: 8000 },
-    meta: {
-      params: {
-        ...(taskFilter ? { task_id: taskFilter } : {}),
-        ...(statusFilter ? { status: statusFilter } : {}),
-        limit: 200,
-      },
-    },
+  const [pageData, setPageData] = React.useState<RunPage<CheckDetail>>({
+    items: [], total: 0, page: 1, page_size: 20,
   });
+  const [loading, setLoading] = React.useState(true);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const { http } = await import("@/lib/api");
+      const { data } = await http.get<RunPage<CheckDetail>>("/api/checks", {
+        params: {
+          ...(taskFilter ? { task_id: taskFilter } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+          page, page_size: pageSize,
+        },
+      });
+      setPageData(data);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [taskFilter, statusFilter, page, pageSize]);
+
+  React.useEffect(() => {
+    load();
+    const id = setInterval(load, 8000);
+    return () => clearInterval(id);
+  }, [load]);
+
+  React.useEffect(() => { setPage(1); }, [taskFilter, statusFilter, pageSize]);
+
+  const exportCSV = async () => {
+    try {
+      const { http } = await import("@/lib/api");
+      const res = await http.get("/api/checks/export.csv", {
+        params: {
+          ...(taskFilter ? { task_id: taskFilter } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+        },
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `check-runs-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(pageData.total / pageData.page_size));
 
   const [openId, setOpenId] = React.useState<number | null>(null);
-
   const taskName = (id: number) =>
     tasks?.data.find((t) => t.id === id)?.name ?? `#${id}`;
 
-  const rows = data?.data.map((c) => [
+  const rows = pageData.items.map((c) => [
     <span key="i" className="text-xs text-muted-foreground">
       #{c.id}
     </span>,
@@ -385,6 +557,9 @@ function CheckRuns() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" size="sm" onClick={exportCSV}>
+              <Download /> 导出 CSV
+            </Button>
           </>
         }
         columns={[
@@ -396,8 +571,18 @@ function CheckRuns() {
           { key: "actions", label: "", className: "text-right" },
         ]}
         rows={rows}
-        getKey={(i) => data!.data[i].id}
-        loading={isLoading}
+        getKey={(i) => pageData.items[i].id}
+        loading={loading}
+      />
+      <PaginationBar
+        page={pageData.page}
+        pageSize={pageData.page_size}
+        total={pageData.total}
+        totalPages={totalPages}
+        onPageChange={(p) => setPage(p)}
+        onPageSizeChange={(s) => setPageSize(s)}
+        jump={jump}
+        onJump={setJump}
       />
       {openId !== null && (
         <CheckDetailSheet checkId={openId} onClose={() => setOpenId(null)} />

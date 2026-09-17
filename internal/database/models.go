@@ -132,27 +132,60 @@ type SyncTask struct {
 	Enabled         bool       `gorm:"not null" json:"enabled"`
 	RcloneOptions   JSONObject `gorm:"not null" json:"rclone_options"`
 	PreCheckTaskID  *int64     `json:"pre_check_task_id"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	// CreatorUserID is recorded on creation but does NOT grant access by itself.
+	// Access is governed by sync_task_bindings_v2 (a default admin row is
+	// inserted for the creator at create time and may be revoked).
+	CreatorUserID  int64     `gorm:"not null;index" json:"creator_user_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func (SyncTask) TableName() string { return "sync_tasks_v2" }
+
+// SyncTaskBinding mirrors DataSourceBinding for sync tasks. A row is created
+// at task-creation time with PermissionAdmin for the creator; that row is the
+// only thing granting access to non-global-admin callers.
+type SyncTaskBinding struct {
+	ID              int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	SyncTaskID      int64     `gorm:"not null;index;uniqueIndex:idx_stb_task_user,priority:1" json:"sync_task_id"`
+	UserID          int64     `gorm:"not null;index;uniqueIndex:idx_stb_task_user,priority:2" json:"user_id"`
+	Permission      string    `gorm:"size:16;not null" json:"permission"`
+	CreatedByUserID *int64    `json:"created_by_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+func (SyncTaskBinding) TableName() string { return "sync_task_bindings_v2" }
 
 type CheckTask struct {
 	ID              int64      `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name            string     `gorm:"size:128;not null" json:"name"`
 	SrcDataSourceID int64      `gorm:"not null;index" json:"src_data_source_id"`
 	SrcPath         string     `gorm:"size:512;not null" json:"src_path"`
-	DstDataSourceID int64      `gorm:"not null;index" json:"dst_data_source_id"`
+	DstDataSourceID int64      `gorm:"not null;index" json="dst_data_source_id"`
 	DstPath         string     `gorm:"size:512;not null" json:"dst_path"`
 	Cron            *string    `gorm:"size:128" json:"cron"`
 	Enabled         bool       `gorm:"not null" json:"enabled"`
 	CheckOptions    JSONObject `gorm:"not null" json:"check_options"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	// CreatorUserID is recorded on creation; access is governed by
+	// check_task_bindings_v2 (default admin row for the creator).
+	CreatorUserID int64     `gorm:"not null;index" json:"creator_user_id"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 func (CheckTask) TableName() string { return "check_tasks_v2" }
+
+// CheckTaskBinding mirrors SyncTaskBinding for check tasks.
+type CheckTaskBinding struct {
+	ID              int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	CheckTaskID     int64     `gorm:"not null;index;uniqueIndex:idx_ctb_task_user,priority:1" json:"check_task_id"`
+	UserID          int64     `gorm:"not null;index;uniqueIndex:idx_ctb_task_user,priority:2" json:"user_id"`
+	Permission      string    `gorm:"size:16;not null" json:"permission"`
+	CreatedByUserID *int64    `json:"created_by_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+func (CheckTaskBinding) TableName() string { return "check_task_bindings_v2" }
 
 // --- runs ---
 
@@ -246,6 +279,8 @@ func AllModels() []any {
 		&SystemSetting{},
 		&SyncTask{},
 		&CheckTask{},
+		&SyncTaskBinding{},
+		&CheckTaskBinding{},
 		&SyncRun{},
 		&CheckRun{},
 		&ClusterNode{},

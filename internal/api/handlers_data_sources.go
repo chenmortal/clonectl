@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"rclone_sync/internal/database"
 	"rclone_sync/internal/services"
@@ -12,13 +13,12 @@ import (
 
 // --- per-resource RBAC (port of app/auth/deps.py datasource section) ---
 
-// checkDSAccess: admin → allow; owner → full; binding rank ≥ level rank.
+// checkDSAccess: global admin → allow; otherwise look up a DataSourceBinding
+// row. The creator's admin row is inserted on Create; removing it (or
+// downgrading its permission) revokes the creator's access.
 func (d *Deps) checkDSAccess(user *database.User, ds *database.DataSource, level string) bool {
 	if user.Role == database.RoleAdmin {
 		return true
-	}
-	if ds.OwnerUserID == user.ID {
-		return true // owner has admin on their own resource
 	}
 	var b database.DataSourceBinding
 	if err := d.DB.Where("data_source_id = ? AND user_id = ?", ds.ID, user.ID).First(&b).Error; err != nil {
@@ -64,7 +64,7 @@ func toDataSourceOut(ds *database.DataSource) gin.H {
 		"id": ds.ID, "name": ds.Name, "storage_source_id": ds.StorageSourceID,
 		"path":          ds.Path,
 		"access_key_id": strNil(ds.AccessKeyID), "secret_access_key": strNil(ds.SecretAccessKey),
-		"description": strNil(ds.Description), "owner_user_id": ds.OwnerUserID,
+		"description": strNil(ds.Description),
 		"last_verified_at": NaiveUTCPtr(ds.LastVerifiedAt), "last_verified_ok": boolNil(ds.LastVerifiedOK),
 		"created_at": NaiveUTC(ds.CreatedAt), "updated_at": NaiveUTC(ds.UpdatedAt),
 	}
@@ -91,14 +91,14 @@ func enforceCredentials(src *database.StorageSource, ak, sk *string) string {
 
 // --- CRUD ---
 
-// ListDataSources — admin sees all; others see owned + bound rows.
+// ListDataSources — admin sees all; others see only rows they have a binding for.
 func (d *Deps) ListDataSources(c *gin.Context) {
 	user := CurrentUser(c)
 	q := d.DB.Model(&database.DataSource{})
 	if user.Role != database.RoleAdmin {
 		q = q.Where(
-			"owner_user_id = ? OR id IN (SELECT data_source_id FROM data_source_bindings_v2 WHERE user_id = ?)",
-			user.ID, user.ID,
+			"id IN (SELECT data_source_id FROM data_source_bindings_v2 WHERE user_id = ?)",
+			user.ID,
 		)
 	}
 	var rows []database.DataSource
@@ -122,7 +122,9 @@ type dataSourceCreateIn struct {
 	Description     *string `json:"description"`
 }
 
-// CreateDataSource (leader+admin|edit) — owner is the current user. 201.
+// CreateDataSource (leader+admin|edit) — inserts an admin DataSourceBinding
+// for the creator inside the same transaction so the new owner has admin
+// access by default and a global admin can revoke that row later.
 func (d *Deps) CreateDataSource(c *gin.Context) {
 	var in dataSourceCreateIn
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -161,7 +163,18 @@ func (d *Deps) CreateDataSource(c *gin.Context) {
 		AccessKeyID: in.AccessKeyID, SecretAccessKey: in.SecretAccessKey,
 		Description: in.Description, OwnerUserID: user.ID,
 	}
-	if err := d.DB.Create(&ds).Error; err != nil {
+	err := d.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&ds).Error; err != nil {
+			return err
+		}
+		creatorID := user.ID
+		b := database.DataSourceBinding{
+			DataSourceID: ds.ID, UserID: creatorID, Permission: database.PermissionAdmin,
+			CreatedByUserID: &creatorID,
+		}
+		return tx.Create(&b).Error
+	})
+	if err != nil {
 		AbortDetail(c, http.StatusConflict,
 			"data source name already exists for this owner: "+err.Error())
 		return

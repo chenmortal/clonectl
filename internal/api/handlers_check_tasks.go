@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"rclone_sync/internal/database"
 	"rclone_sync/internal/services"
@@ -18,14 +19,24 @@ func toCheckTaskOut(t *database.CheckTask) gin.H {
 		"src_path": t.SrcPath, "dst_path": t.DstPath,
 		"cron": strNil(t.Cron), "enabled": t.Enabled,
 		"check_options": t.CheckOptions,
-		"created_at":    NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
+		"creator_user_id": t.CreatorUserID,
+		"created_at":      NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
 	}
 }
 
-// ListCheckTasks — all roles.
+// ListCheckTasks — admin sees all; others see only tasks they have a binding for.
 func (d *Deps) ListCheckTasks(c *gin.Context) {
+	user := CurrentUser(c)
+	q := d.DB.Model(&database.CheckTask{})
+	if ids, all := d.visibleCheckTaskIDs(user); !all {
+		if len(ids) == 0 {
+			c.JSON(http.StatusOK, []gin.H{})
+			return
+		}
+		q = q.Where("id IN ?", ids)
+	}
 	var rows []database.CheckTask
-	if err := d.DB.Order("id").Find(&rows).Error; err != nil {
+	if err := q.Order("id").Find(&rows).Error; err != nil {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -49,7 +60,8 @@ type checkTaskCreateIn struct {
 	CheckOptions    map[string]any `json:"check_options"`
 }
 
-// CreateCheckTask (leader+admin|edit) → 201.
+// CreateCheckTask (leader+admin|edit) → 201. Inserts a creator admin
+// CheckTaskBinding in the same transaction.
 func (d *Deps) CreateCheckTask(c *gin.Context) {
 	var in checkTaskCreateIn
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -92,12 +104,21 @@ func (d *Deps) CreateCheckTask(c *gin.Context) {
 	if options == nil {
 		options = map[string]any{}
 	}
+	user := CurrentUser(c)
 	task := database.CheckTask{
 		Name: in.Name, SrcDataSourceID: srcDS, DstDataSourceID: dstDS,
 		SrcPath: in.SrcPath, DstPath: in.DstPath, Cron: in.Cron,
 		Enabled: enabled, CheckOptions: database.JSONObject(options),
+		CreatorUserID: user.ID,
 	}
-	if err := d.DB.Create(&task).Error; err != nil {
+	err := d.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&task).Error; err != nil {
+			return err
+		}
+		checkID := task.ID
+		return d.insertCreatorBindings(tx, user.ID, nil, &checkID)
+	})
+	if err != nil {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -105,23 +126,15 @@ func (d *Deps) CreateCheckTask(c *gin.Context) {
 	c.JSON(http.StatusCreated, toCheckTaskOut(&task))
 }
 
-// GetCheckTask — all roles.
+// GetCheckTask — read access (gated by LoadCheckTaskForAccess).
 func (d *Deps) GetCheckTask(c *gin.Context) {
-	var task database.CheckTask
-	if err := d.DB.First(&task, c.Param("check_task_id")).Error; err != nil {
-		AbortDetail(c, http.StatusNotFound, "check task not found")
-		return
-	}
-	c.JSON(http.StatusOK, toCheckTaskOut(&task))
+	c.JSON(http.StatusOK, toCheckTaskOut(checkTaskFrom(c)))
 }
 
-// UpdateCheckTask (leader+admin|edit) — partial update.
+// UpdateCheckTask (leader+admin|edit, write access via LoadCheckTaskForAccess) — partial update.
 func (d *Deps) UpdateCheckTask(c *gin.Context) {
-	var task database.CheckTask
-	if err := d.DB.First(&task, c.Param("check_task_id")).Error; err != nil {
-		AbortDetail(c, http.StatusNotFound, "check task not found")
-		return
-	}
+	taskPtr := checkTaskFrom(c)
+	task := *taskPtr
 	raw, err := c.GetRawData()
 	if err != nil {
 		AbortInvalidJSON(c, err)
@@ -232,13 +245,10 @@ func (d *Deps) UpdateCheckTask(c *gin.Context) {
 	c.JSON(http.StatusOK, toCheckTaskOut(&task))
 }
 
-// DeleteCheckTask (leader+admin|edit) — 409 while referenced as pre-check.
+// DeleteCheckTask (leader+admin|edit, admin access via LoadCheckTaskForAccess)
+// — 409 while referenced as pre-check; bindings cascade.
 func (d *Deps) DeleteCheckTask(c *gin.Context) {
-	var task database.CheckTask
-	if err := d.DB.First(&task, c.Param("check_task_id")).Error; err != nil {
-		AbortDetail(c, http.StatusNotFound, "check task not found")
-		return
-	}
+	task := checkTaskFrom(c)
 	var used int64
 	d.DB.Model(&database.SyncTask{}).Where("pre_check_task_id = ?", task.ID).Limit(1).Count(&used)
 	if used > 0 {
@@ -249,17 +259,14 @@ func (d *Deps) DeleteCheckTask(c *gin.Context) {
 		d.Sched.RemoveCheckTask(task.ID)
 	}
 	d.DB.Where("task_id = ?", task.ID).Delete(&database.CheckRun{})
-	d.DB.Delete(&task)
+	d.DB.Where("check_task_id = ?", task.ID).Delete(&database.CheckTaskBinding{})
+	d.DB.Delete(task)
 	c.Status(http.StatusNoContent)
 }
 
-// TriggerCheckTask (admin|edit) → 202 + CheckOut.
+// TriggerCheckTask (write access via LoadCheckTaskForAccess) → 202 + CheckOut.
 func (d *Deps) TriggerCheckTask(c *gin.Context) {
-	var task database.CheckTask
-	if err := d.DB.First(&task, c.Param("check_task_id")).Error; err != nil {
-		AbortDetail(c, http.StatusNotFound, "check task not found")
-		return
-	}
+	task := checkTaskFrom(c)
 	if d.RC == nil {
 		AbortDetail(c, http.StatusServiceUnavailable, "rclone client not available")
 		return

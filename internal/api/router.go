@@ -53,25 +53,65 @@ func registerTasks(r *gin.Engine, d *Deps) {
 	tasks := r.Group("/api/tasks", d.RequireAuth(), d.RequireRoles(allRoles()...))
 	tasks.GET("", d.ListTasks)
 	tasks.POST("", write(d.CreateTask)...)
-	tasks.GET("/:task_id", d.GetTask)
-	tasks.PUT("/:task_id", write(d.UpdateTask)...)
-	tasks.DELETE("/:task_id", write(d.DeleteTask)...)
-	tasks.POST("/:task_id/trigger", d.RequireRoles(database.RoleEdit, database.RoleAdmin), d.TriggerTask)
+	tasks.GET("/:task_id", d.LoadSyncTaskForAccess(database.PermissionRead), d.GetTask)
+	tasks.PUT("/:task_id",
+		d.RequireLeader(),
+		d.LoadSyncTaskForAccess(database.PermissionWrite),
+		d.UpdateTask)
+	tasks.DELETE("/:task_id",
+		d.RequireLeader(),
+		d.LoadSyncTaskForAccess(database.PermissionAdmin),
+		d.DeleteTask)
+	tasks.POST("/:task_id/trigger",
+		d.RequireRoles(database.RoleEdit, database.RoleAdmin),
+		d.LoadSyncTaskForAccess(database.PermissionWrite),
+		d.TriggerTask)
+
+	// sync task bindings (admin-level)
+	tasks.GET("/:task_id/bindings",
+		d.LoadSyncTaskForAccess(database.PermissionRead), d.ListSyncTaskBindings)
+	tasks.POST("/:task_id/bindings",
+		d.LoadSyncTaskForAccess(database.PermissionAdmin), d.CreateSyncTaskBinding)
+	tasks.PUT("/:task_id/bindings/:binding_id",
+		d.LoadSyncTaskForAccess(database.PermissionAdmin), d.UpdateSyncTaskBinding)
+	tasks.DELETE("/:task_id/bindings/:binding_id",
+		d.LoadSyncTaskForAccess(database.PermissionAdmin), d.DeleteSyncTaskBinding)
 
 	checks := r.Group("/api/check-tasks", d.RequireAuth(), d.RequireRoles(allRoles()...))
 	checks.GET("", d.ListCheckTasks)
 	checks.POST("", write(d.CreateCheckTask)...)
-	checks.GET("/:check_task_id", d.GetCheckTask)
-	checks.PUT("/:check_task_id", write(d.UpdateCheckTask)...)
-	checks.DELETE("/:check_task_id", write(d.DeleteCheckTask)...)
-	checks.POST("/:check_task_id/trigger", d.RequireRoles(database.RoleEdit, database.RoleAdmin), d.TriggerCheckTask)
+	checks.GET("/:check_task_id", d.LoadCheckTaskForAccess(database.PermissionRead), d.GetCheckTask)
+	checks.PUT("/:check_task_id",
+		d.RequireLeader(),
+		d.LoadCheckTaskForAccess(database.PermissionWrite),
+		d.UpdateCheckTask)
+	checks.DELETE("/:check_task_id",
+		d.RequireLeader(),
+		d.LoadCheckTaskForAccess(database.PermissionAdmin),
+		d.DeleteCheckTask)
+	checks.POST("/:check_task_id/trigger",
+		d.RequireRoles(database.RoleEdit, database.RoleAdmin),
+		d.LoadCheckTaskForAccess(database.PermissionWrite),
+		d.TriggerCheckTask)
+
+	// check task bindings
+	checks.GET("/:check_task_id/bindings",
+		d.LoadCheckTaskForAccess(database.PermissionRead), d.ListCheckTaskBindings)
+	checks.POST("/:check_task_id/bindings",
+		d.LoadCheckTaskForAccess(database.PermissionAdmin), d.CreateCheckTaskBinding)
+	checks.PUT("/:check_task_id/bindings/:binding_id",
+		d.LoadCheckTaskForAccess(database.PermissionAdmin), d.UpdateCheckTaskBinding)
+	checks.DELETE("/:check_task_id/bindings/:binding_id",
+		d.LoadCheckTaskForAccess(database.PermissionAdmin), d.DeleteCheckTaskBinding)
 }
 
 func registerRuns(r *gin.Engine, d *Deps) {
 	g := r.Group("", d.RequireAuth(), d.RequireRoles(allRoles()...))
 	g.GET("/api/runs", d.ListSyncRuns)
+	g.GET("/api/runs/export.csv", d.ExportSyncRunsCSV)
 	g.GET("/api/runs/:run_id", d.GetSyncRun)
 	g.GET("/api/checks", d.ListCheckRuns)
+	g.GET("/api/checks/export.csv", d.ExportCheckRunsCSV)
 	g.GET("/api/checks/:check_id", d.GetCheckRun)
 }
 

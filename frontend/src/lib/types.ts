@@ -23,11 +23,30 @@ export interface DataSource {
   /** Server returns this in full; UI MUST redact when displaying. */
   secret_access_key: string;
   description: string | null;
-  owner_user_id: number;
   last_verified_at: string | null;
   last_verified_ok: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+export type TaskPermission = "read" | "write" | "admin";
+
+export interface SyncTaskBinding {
+  id: number;
+  sync_task_id: number;
+  user_id: number;
+  permission: TaskPermission;
+  created_at: string;
+  created_by_user_id: number | null;
+}
+
+export interface CheckTaskBinding {
+  id: number;
+  check_task_id: number;
+  user_id: number;
+  permission: TaskPermission;
+  created_at: string;
+  created_by_user_id: number | null;
 }
 
 export type DataSourcePermission = "read" | "write" | "admin";
@@ -77,6 +96,7 @@ export interface SyncTask {
   enabled: boolean;
   rclone_options: RcloneOptions;
   pre_check_task_id: number | null;
+  creator_user_id: number;
   created_at: string;
   updated_at: string;
 }
@@ -93,6 +113,7 @@ export interface CheckTask {
   cron: string | null;
   enabled: boolean;
   check_options: CheckOptions;
+  creator_user_id: number;
   created_at: string;
   updated_at: string;
 }

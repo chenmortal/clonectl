@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"rclone_sync/internal/database"
 	"rclone_sync/internal/scheduler"
@@ -22,7 +23,8 @@ func toTaskOut(t *database.SyncTask) gin.H {
 		"src_path": t.SrcPath, "dst_path": t.DstPath,
 		"mode": t.Mode, "cron": t.Cron, "enabled": t.Enabled,
 		"rclone_options": t.RcloneOptions, "pre_check_task_id": intNil(t.PreCheckTaskID),
-		"created_at": NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
+		"creator_user_id": t.CreatorUserID,
+		"created_at":     NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
 	}
 }
 
@@ -146,10 +148,19 @@ func (d *Deps) validatePreCheck(preCheckTaskID int64) (int, string) {
 
 // --- handlers ---
 
-// ListTasks — all roles.
+// ListTasks — admin sees all; others see only tasks they have a binding for.
 func (d *Deps) ListTasks(c *gin.Context) {
+	user := CurrentUser(c)
+	q := d.DB.Model(&database.SyncTask{})
+	if ids, all := d.visibleSyncTaskIDs(user); !all {
+		if len(ids) == 0 {
+			c.JSON(http.StatusOK, []gin.H{})
+			return
+		}
+		q = q.Where("id IN ?", ids)
+	}
 	var rows []database.SyncTask
-	if err := d.DB.Order("id").Find(&rows).Error; err != nil {
+	if err := q.Order("id").Find(&rows).Error; err != nil {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -175,7 +186,9 @@ type taskCreateIn struct {
 	PreCheckTaskID  *int64         `json:"pre_check_task_id"`
 }
 
-// CreateTask (leader+admin|edit) → 201.
+// CreateTask (leader+admin|edit) → 201. Inserts a creator admin
+// SyncTaskBinding in the same transaction so the creator has admin access
+// by default and a global admin can revoke that row later.
 func (d *Deps) CreateTask(c *gin.Context) {
 	var in taskCreateIn
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -228,13 +241,22 @@ func (d *Deps) CreateTask(c *gin.Context) {
 	if options == nil {
 		options = map[string]any{}
 	}
+	user := CurrentUser(c)
 	task := database.SyncTask{
 		Name: in.Name, SrcDataSourceID: srcDS, DstDataSourceID: dstDS,
 		SrcPath: in.SrcPath, DstPath: in.DstPath, Mode: in.Mode, Cron: in.Cron,
 		Enabled: enabled, RcloneOptions: database.JSONObject(options),
 		PreCheckTaskID: in.PreCheckTaskID,
+		CreatorUserID:  user.ID,
 	}
-	if err := d.DB.Create(&task).Error; err != nil {
+	err := d.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&task).Error; err != nil {
+			return err
+		}
+		syncID := task.ID
+		return d.insertCreatorBindings(tx, user.ID, &syncID, nil)
+	})
+	if err != nil {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -242,24 +264,18 @@ func (d *Deps) CreateTask(c *gin.Context) {
 	c.JSON(http.StatusCreated, toTaskOut(&task))
 }
 
-// GetTask — all roles.
+// GetTask — read access (gated by LoadSyncTaskForAccess).
+
+// GetTask — read access (gated by LoadSyncTaskForAccess).
 func (d *Deps) GetTask(c *gin.Context) {
-	var task database.SyncTask
-	if err := d.DB.First(&task, c.Param("task_id")).Error; err != nil {
-		AbortDetail(c, http.StatusNotFound, "task not found")
-		return
-	}
-	c.JSON(http.StatusOK, toTaskOut(&task))
+	c.JSON(http.StatusOK, toTaskOut(syncTaskFrom(c)))
 }
 
-// UpdateTask (leader+admin|edit) — partial update, merged ref validation,
-// schedule re-applied.
+// UpdateTask (leader+admin|edit, write access via LoadSyncTaskForAccess) —
+// partial update, merged ref validation, schedule re-applied.
 func (d *Deps) UpdateTask(c *gin.Context) {
-	var task database.SyncTask
-	if err := d.DB.First(&task, c.Param("task_id")).Error; err != nil {
-		AbortDetail(c, http.StatusNotFound, "task not found")
-		return
-	}
+	taskPtr := syncTaskFrom(c)
+	task := *taskPtr
 	raw, err := c.GetRawData()
 	if err != nil {
 		AbortInvalidJSON(c, err)
@@ -391,28 +407,22 @@ func (d *Deps) UpdateTask(c *gin.Context) {
 	c.JSON(http.StatusOK, toTaskOut(&task))
 }
 
-// DeleteTask (leader+admin|edit) — schedule removed first, runs cascade.
+// DeleteTask (leader+admin|edit, admin access via LoadSyncTaskForAccess) —
+// schedule removed first, runs + bindings cascade.
 func (d *Deps) DeleteTask(c *gin.Context) {
-	var task database.SyncTask
-	if err := d.DB.First(&task, c.Param("task_id")).Error; err != nil {
-		AbortDetail(c, http.StatusNotFound, "task not found")
-		return
-	}
+	task := syncTaskFrom(c)
 	if d.Sched != nil {
 		d.Sched.RemoveTask(task.ID)
 	}
 	d.DB.Where("task_id = ?", task.ID).Delete(&database.SyncRun{})
-	d.DB.Delete(&task)
+	d.DB.Where("sync_task_id = ?", task.ID).Delete(&database.SyncTaskBinding{})
+	d.DB.Delete(task)
 	c.Status(http.StatusNoContent)
 }
 
-// TriggerTask (admin|edit, no leader gate — parity) → 202 + RunOut.
+// TriggerTask (write access via LoadSyncTaskForAccess, no leader gate) → 202 + RunOut.
 func (d *Deps) TriggerTask(c *gin.Context) {
-	var task database.SyncTask
-	if err := d.DB.First(&task, c.Param("task_id")).Error; err != nil {
-		AbortDetail(c, http.StatusNotFound, "task not found")
-		return
-	}
+	task := syncTaskFrom(c)
 	if d.RC == nil {
 		AbortDetail(c, http.StatusServiceUnavailable, "rclone client not available")
 		return
