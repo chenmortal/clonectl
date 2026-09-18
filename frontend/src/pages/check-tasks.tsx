@@ -7,6 +7,7 @@ import { CronField } from "@/components/shared/cron-field";
 import { DataPage } from "@/components/shared/data-page";
 import { DialogSection } from "@/components/shared/dialog-section";
 import { InfoTip } from "@/components/shared/info-tip";
+import { disableIf, permGate } from "@/components/shared/perm-gate";
 import { TaskBindingsSheet } from "@/components/shared/task-bindings-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -180,7 +181,7 @@ export default function CheckTasks() {
         variant="ghost"
         size="icon-sm"
         title="立即检查"
-        disabled={triggering === t.id}
+        disabled={triggering === t.id || permGate(t.current_user_permission, "write").disabled}
         onClick={() => trigger(t)}
       >
         {triggering === t.id ? (
@@ -192,8 +193,9 @@ export default function CheckTasks() {
       <Button
         variant="ghost"
         size="icon-sm"
-        title="编辑"
+        {...disableIf(permGate(t.current_user_permission, "write"))}
         onClick={() => {
+          if (permGate(t.current_user_permission, "write").disabled) return;
           setEditing(t);
           setOpen(true);
         }}
@@ -203,17 +205,23 @@ export default function CheckTasks() {
       <Button
         variant="ghost"
         size="icon-sm"
-        title="权限绑定"
-        onClick={() => setBinding(t)}
+        {...disableIf(permGate(t.current_user_permission, "admin"))}
+        onClick={() => {
+          if (permGate(t.current_user_permission, "admin").disabled) return;
+          setBinding(t);
+        }}
       >
         <Users2 />
       </Button>
       <Button
         variant="ghost"
         size="icon-sm"
-        title="删除"
         className="text-destructive"
-        onClick={() => doDelete(t)}
+        {...disableIf(permGate(t.current_user_permission, "admin"))}
+        onClick={() => {
+          if (permGate(t.current_user_permission, "admin").disabled) return;
+          doDelete(t);
+        }}
       >
         <Trash2 />
       </Button>

@@ -11,7 +11,7 @@ import (
 	"rclone_sync/internal/services"
 )
 
-func toCheckTaskOut(t *database.CheckTask) gin.H {
+func toCheckTaskOut(t *database.CheckTask, currentPerm string) gin.H {
 	return gin.H{
 		"id": t.ID, "name": t.Name,
 		"src_data_source_id": t.SrcDataSourceID, "dst_data_source_id": t.DstDataSourceID,
@@ -21,6 +21,7 @@ func toCheckTaskOut(t *database.CheckTask) gin.H {
 		"check_options": t.CheckOptions,
 		"creator_user_id": t.CreatorUserID,
 		"created_at":      NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
+		"current_user_permission": currentPerm,
 	}
 }
 
@@ -40,9 +41,14 @@ func (d *Deps) ListCheckTasks(c *gin.Context) {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	ids := make([]int64, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	perms := d.checkTaskPermissionLookups(user, ids)
 	out := make([]gin.H, 0, len(rows))
 	for i := range rows {
-		out = append(out, toCheckTaskOut(&rows[i]))
+		out = append(out, toCheckTaskOut(&rows[i], perms[rows[i].ID]))
 	}
 	c.JSON(http.StatusOK, out)
 }
@@ -123,12 +129,14 @@ func (d *Deps) CreateCheckTask(c *gin.Context) {
 		return
 	}
 	d.applyCheckSchedule(&task)
-	c.JSON(http.StatusCreated, toCheckTaskOut(&task))
+	c.JSON(http.StatusCreated, toCheckTaskOut(&task, database.PermissionAdmin))
 }
 
 // GetCheckTask — read access (gated by LoadCheckTaskForAccess).
 func (d *Deps) GetCheckTask(c *gin.Context) {
-	c.JSON(http.StatusOK, toCheckTaskOut(checkTaskFrom(c)))
+	t := checkTaskFrom(c)
+	perm := d.checkTaskPermissionLookups(CurrentUser(c), []int64{t.ID})[t.ID]
+	c.JSON(http.StatusOK, toCheckTaskOut(t, perm))
 }
 
 // UpdateCheckTask (leader+admin|edit, write access via LoadCheckTaskForAccess) — partial update.
@@ -242,7 +250,8 @@ func (d *Deps) UpdateCheckTask(c *gin.Context) {
 		return
 	}
 	d.applyCheckSchedule(&task)
-	c.JSON(http.StatusOK, toCheckTaskOut(&task))
+	perm := d.checkTaskPermissionLookups(CurrentUser(c), []int64{task.ID})[task.ID]
+	c.JSON(http.StatusOK, toCheckTaskOut(&task, perm))
 }
 
 // DeleteCheckTask (leader+admin|edit, admin access via LoadCheckTaskForAccess)

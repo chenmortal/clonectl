@@ -59,7 +59,7 @@ func dsFrom(c *gin.Context) *database.DataSource {
 
 // --- DTO ---
 
-func toDataSourceOut(ds *database.DataSource) gin.H {
+func toDataSourceOut(ds *database.DataSource, currentPerm string) gin.H {
 	return gin.H{
 		"id": ds.ID, "name": ds.Name, "storage_source_id": ds.StorageSourceID,
 		"path":          ds.Path,
@@ -67,6 +67,7 @@ func toDataSourceOut(ds *database.DataSource) gin.H {
 		"description": strNil(ds.Description),
 		"last_verified_at": NaiveUTCPtr(ds.LastVerifiedAt), "last_verified_ok": boolNil(ds.LastVerifiedOK),
 		"created_at": NaiveUTC(ds.CreatedAt), "updated_at": NaiveUTC(ds.UpdatedAt),
+		"current_user_permission": currentPerm,
 	}
 }
 
@@ -106,9 +107,14 @@ func (d *Deps) ListDataSources(c *gin.Context) {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	ids := make([]int64, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	perms := d.dsPermissionLookups(user, ids)
 	out := make([]gin.H, 0, len(rows))
 	for i := range rows {
-		out = append(out, toDataSourceOut(&rows[i]))
+		out = append(out, toDataSourceOut(&rows[i], perms[rows[i].ID]))
 	}
 	c.JSON(http.StatusOK, out)
 }
@@ -179,7 +185,7 @@ func (d *Deps) CreateDataSource(c *gin.Context) {
 			"data source name already exists for this owner: "+err.Error())
 		return
 	}
-	c.JSON(http.StatusCreated, toDataSourceOut(&ds))
+	c.JSON(http.StatusCreated, toDataSourceOut(&ds, database.PermissionAdmin))
 }
 
 // GetDataSource — read access required.
@@ -197,7 +203,8 @@ func (d *Deps) GetDataSource(c *gin.Context) {
 		})
 		return
 	}
-	c.JSON(http.StatusOK, toDataSourceOut(&ds))
+	perm := d.dsPermissionLookups(user, []int64{ds.ID})[ds.ID]
+	c.JSON(http.StatusOK, toDataSourceOut(&ds, perm))
 }
 
 // UpdateDataSource — write access; partial update with post-state validation.
@@ -292,7 +299,8 @@ func (d *Deps) UpdateDataSource(c *gin.Context) {
 		AbortDetail(c, http.StatusConflict, "update conflict (likely duplicate name): "+err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, toDataSourceOut(ds))
+	perm := d.dsPermissionLookups(CurrentUser(c), []int64{ds.ID})[ds.ID]
+	c.JSON(http.StatusOK, toDataSourceOut(ds, perm))
 }
 
 func hasAKorSK(p Partial) bool {

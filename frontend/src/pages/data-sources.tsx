@@ -11,6 +11,7 @@ import {
 import * as React from "react";
 import { toast } from "sonner";
 import { DataPage, StatusDot } from "@/components/shared/data-page";
+import { disableIf, permGate } from "@/components/shared/perm-gate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -141,7 +142,7 @@ export default function DataSources() {
           variant="ghost"
           size="icon-sm"
           title="验证读写"
-          disabled={verifying === ds.id}
+          disabled={verifying === ds.id || permGate(ds.current_user_permission, "read").disabled}
           onClick={() => verify(ds)}
         >
           {verifying === ds.id ? (
@@ -153,20 +154,34 @@ export default function DataSources() {
         <Button
           variant="ghost"
           size="icon-sm"
-          title="权限绑定"
-          onClick={() => setBinding(ds)}
+          {...disableIf(permGate(ds.current_user_permission, "admin"))}
+          onClick={() => {
+            if (permGate(ds.current_user_permission, "admin").disabled) return;
+            setBinding(ds);
+          }}
         >
           <Users2 />
         </Button>
-        <Button variant="ghost" size="icon-sm" title="编辑" onClick={() => openEdit(ds)}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          {...disableIf(permGate(ds.current_user_permission, "write"))}
+          onClick={() => {
+            if (permGate(ds.current_user_permission, "write").disabled) return;
+            openEdit(ds);
+          }}
+        >
           <Pencil />
         </Button>
         <Button
           variant="ghost"
           size="icon-sm"
-          title="删除"
           className="text-destructive"
-          onClick={() => doDelete(ds)}
+          {...disableIf(permGate(ds.current_user_permission, "admin"))}
+          onClick={() => {
+            if (permGate(ds.current_user_permission, "admin").disabled) return;
+            doDelete(ds);
+          }}
         >
           <Trash2 />
         </Button>

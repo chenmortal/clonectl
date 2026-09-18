@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { CronField } from "@/components/shared/cron-field";
 import { DataPage } from "@/components/shared/data-page";
 import { DialogSection } from "@/components/shared/dialog-section";
+import { disableIf, permGate } from "@/components/shared/perm-gate";
 import { RcloneOptionsField } from "@/components/shared/rclone-options-field";
 import { TaskBindingsSheet } from "@/components/shared/task-bindings-sheet";
 import { Badge } from "@/components/ui/badge";
@@ -140,7 +141,7 @@ export default function Tasks() {
           variant="ghost"
           size="icon-sm"
           title="立即运行"
-          disabled={triggering === t.id}
+          disabled={triggering === t.id || permGate(t.current_user_permission, "write").disabled}
           onClick={() => trigger(t)}
         >
           {triggering === t.id ? (
@@ -152,8 +153,9 @@ export default function Tasks() {
         <Button
           variant="ghost"
           size="icon-sm"
-          title="编辑"
+          {...disableIf(permGate(t.current_user_permission, "write"))}
           onClick={() => {
+            if (permGate(t.current_user_permission, "write").disabled) return;
             setEditing(t);
             setOpen(true);
           }}
@@ -163,17 +165,23 @@ export default function Tasks() {
         <Button
           variant="ghost"
           size="icon-sm"
-          title="权限绑定"
-          onClick={() => setBinding(t)}
+          {...disableIf(permGate(t.current_user_permission, "admin"))}
+          onClick={() => {
+            if (permGate(t.current_user_permission, "admin").disabled) return;
+            setBinding(t);
+          }}
         >
           <Users2 />
         </Button>
         <Button
           variant="ghost"
           size="icon-sm"
-          title="删除"
           className="text-destructive"
-          onClick={() => doDelete(t)}
+          {...disableIf(permGate(t.current_user_permission, "admin"))}
+          onClick={() => {
+            if (permGate(t.current_user_permission, "admin").disabled) return;
+            doDelete(t);
+          }}
         >
           <Trash2 />
         </Button>

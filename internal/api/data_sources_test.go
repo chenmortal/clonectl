@@ -104,6 +104,10 @@ func TestDataSourceCRUD(t *testing.T) {
 	var rows []map[string]any
 	require.NoError(t, unmarshalBody(w, &rows))
 	assert.Len(t, rows, 2)
+	// Every row reports the caller's permission (admin → "admin").
+	for _, r := range rows {
+		assert.Equal(t, database.PermissionAdmin, r["current_user_permission"], "admin sees admin perm")
+	}
 	w = doJSON(r, http.MethodGet, "/api/data-sources", view, nil)
 	require.NoError(t, unmarshalBody(w, &rows))
 	assert.Empty(t, rows)

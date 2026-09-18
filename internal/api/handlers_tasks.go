@@ -15,7 +15,7 @@ import (
 // --- DTOs (JSON field names = FastAPI contract; *_storage_id always null in
 // outputs because the redesigned task tables carry data-source refs only) ---
 
-func toTaskOut(t *database.SyncTask) gin.H {
+func toTaskOut(t *database.SyncTask, currentPerm string) gin.H {
 	return gin.H{
 		"id": t.ID, "name": t.Name,
 		"src_data_source_id": t.SrcDataSourceID, "dst_data_source_id": t.DstDataSourceID,
@@ -24,7 +24,8 @@ func toTaskOut(t *database.SyncTask) gin.H {
 		"mode": t.Mode, "cron": t.Cron, "enabled": t.Enabled,
 		"rclone_options": t.RcloneOptions, "pre_check_task_id": intNil(t.PreCheckTaskID),
 		"creator_user_id": t.CreatorUserID,
-		"created_at":     NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
+		"created_at":      NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
+		"current_user_permission": currentPerm,
 	}
 }
 
@@ -164,9 +165,14 @@ func (d *Deps) ListTasks(c *gin.Context) {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	ids := make([]int64, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	perms := d.syncTaskPermissionLookups(user, ids)
 	out := make([]gin.H, 0, len(rows))
 	for i := range rows {
-		out = append(out, toTaskOut(&rows[i]))
+		out = append(out, toTaskOut(&rows[i], perms[rows[i].ID]))
 	}
 	c.JSON(http.StatusOK, out)
 }
@@ -261,14 +267,16 @@ func (d *Deps) CreateTask(c *gin.Context) {
 		return
 	}
 	d.applyTaskSchedule(&task)
-	c.JSON(http.StatusCreated, toTaskOut(&task))
+	c.JSON(http.StatusCreated, toTaskOut(&task, database.PermissionAdmin))
 }
 
 // GetTask — read access (gated by LoadSyncTaskForAccess).
 
 // GetTask — read access (gated by LoadSyncTaskForAccess).
 func (d *Deps) GetTask(c *gin.Context) {
-	c.JSON(http.StatusOK, toTaskOut(syncTaskFrom(c)))
+	t := syncTaskFrom(c)
+	perm := d.syncTaskPermissionLookups(CurrentUser(c), []int64{t.ID})[t.ID]
+	c.JSON(http.StatusOK, toTaskOut(t, perm))
 }
 
 // UpdateTask (leader+admin|edit, write access via LoadSyncTaskForAccess) —
@@ -404,7 +412,8 @@ func (d *Deps) UpdateTask(c *gin.Context) {
 		return
 	}
 	d.applyTaskSchedule(&task)
-	c.JSON(http.StatusOK, toTaskOut(&task))
+	perm := d.syncTaskPermissionLookups(CurrentUser(c), []int64{task.ID})[task.ID]
+	c.JSON(http.StatusOK, toTaskOut(&task, perm))
 }
 
 // DeleteTask (leader+admin|edit, admin access via LoadSyncTaskForAccess) —

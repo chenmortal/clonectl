@@ -27,6 +27,7 @@ export interface DataSource {
   last_verified_ok: boolean | null;
   created_at: string;
   updated_at: string;
+  current_user_permission: ResourcePermission;
 }
 
 export type TaskPermission = "read" | "write" | "admin";
@@ -50,6 +51,25 @@ export interface CheckTaskBinding {
 }
 
 export type DataSourcePermission = "read" | "write" | "admin";
+
+export type ResourcePermission = DataSourcePermission | "";
+
+// permRank: returns 0 for empty (no access), 1/2/3 for read/write/admin.
+// Used by the UI to gate button enabled state.
+export function permRank(p: ResourcePermission | string | undefined): number {
+  switch (p) {
+    case "admin": return 3;
+    case "write": return 2;
+    case "read": return 1;
+    default: return 0;
+  }
+}
+
+// canAtLeast: true iff the user's current permission is at least the level
+// required for the action. e.g. canAtLeast(perm, "write") → perm is "write" or "admin".
+export function canAtLeast(p: ResourcePermission | string | undefined, level: DataSourcePermission): boolean {
+  return permRank(p) >= permRank(level);
+}
 
 export interface DataSourceBinding {
   id: number;
@@ -97,6 +117,7 @@ export interface SyncTask {
   rclone_options: RcloneOptions;
   pre_check_task_id: number | null;
   creator_user_id: number;
+  current_user_permission: ResourcePermission;
   created_at: string;
   updated_at: string;
 }
@@ -114,6 +135,7 @@ export interface CheckTask {
   enabled: boolean;
   check_options: CheckOptions;
   creator_user_id: number;
+  current_user_permission: ResourcePermission;
   created_at: string;
   updated_at: string;
 }
