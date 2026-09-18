@@ -322,6 +322,9 @@ func (d *Deps) DeleteDataSource(c *gin.Context) {
 }
 
 // VerifyDataSource probes read+write access and updates last_verified_*.
+// Gated at read-level: verification is an observational action (rclone
+// List + a temporary WriteProbe that's cleaned up), not a configuration
+// change.
 func (d *Deps) VerifyDataSource(c *gin.Context) {
 	ds := dsFrom(c)
 	var src database.StorageSource

@@ -160,7 +160,7 @@ func TestDataSourceUpdateAndLocalBackend(t *testing.T) {
 }
 
 func TestDataSourceVerify(t *testing.T) {
-	d, r, admin, _, _, src, srv := seedDSEnv(t)
+	d, r, admin, _, view, src, srv := seedDSEnv(t)
 	ds := createDS(t, r, admin, map[string]any{
 		"name": "v", "storage_source_id": src.ID, "path": "/data",
 		"access_key_id": "ak", "secret_access_key": "sk",
@@ -201,6 +201,22 @@ func TestDataSourceVerify(t *testing.T) {
 	assert.Equal(t, true, out["read_ok"])
 	assert.Equal(t, false, out["write_ok"])
 	assert.Contains(t, out["error"], "write:")
+
+	// Verify is observational — a read-only binding is enough.
+	// Grant view a read binding and re-verify.
+	var ed database.User
+	require.NoError(t, d.DB.Where("username = ?", "ed").First(&ed).Error)
+	require.NoError(t, d.DB.Create(&database.DataSourceBinding{
+		DataSourceID: int64(ds["id"].(float64)),
+		UserID:       ed.ID,
+		Permission:   database.PermissionRead,
+	}).Error)
+	w = doJSON(r, http.MethodPost, "/api/data-sources/"+dsID+"/verify", login(t, r, "ed", "pass1234"), nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	// A user with no binding at all still gets 403.
+	w = doJSON(r, http.MethodPost, "/api/data-sources/"+dsID+"/verify", view, nil)
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 func TestDataSourceBindings(t *testing.T) {

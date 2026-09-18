@@ -157,7 +157,7 @@ func registerDataSources(r *gin.Engine, d *Deps) {
 	g.GET("/:data_source_id", d.GetDataSource)
 	g.PUT("/:data_source_id", d.LoadDSForAccess(database.PermissionWrite), d.UpdateDataSource)
 	g.DELETE("/:data_source_id", d.LoadDSForAccess(database.PermissionAdmin), d.DeleteDataSource)
-	g.POST("/:data_source_id/verify", d.LoadDSForAccess(database.PermissionWrite), d.VerifyDataSource)
+	g.POST("/:data_source_id/verify", d.LoadDSForAccess(database.PermissionRead), d.VerifyDataSource)
 	g.GET("/:data_source_id/bindings", d.LoadDSForAccess(database.PermissionRead), d.ListBindings)
 	g.POST("/:data_source_id/bindings", d.LoadDSForAccess(database.PermissionAdmin), d.CreateBinding)
 	g.PUT("/:data_source_id/bindings/:binding_id", d.LoadDSForAccess(database.PermissionAdmin), d.UpdateBinding)
