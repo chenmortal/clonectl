@@ -46,6 +46,16 @@ type Settings struct {
 	BcryptRounds           int
 	BootstrapAdminUser     string
 	BootstrapAdminPassword string
+
+	// --- agent (remote data-plane executors) ---
+	// AgentSharedToken is the X-Agent-Token header value sent on
+	// every outbound call to a remote agent. Empty disables auth.
+	AgentSharedToken string
+	// AgentDefaultEndpoint is the dial address (e.g.
+	// http://10.0.0.5:9010) used when no routing rule matches a
+	// task's labels. Empty means "no agents configured" — Redis
+	// tasks then fail with a clear run error.
+	AgentDefaultEndpoint string
 }
 
 // Load reads .env (no override of real env) then env vars with Python-parity
@@ -82,6 +92,9 @@ func Load() Settings {
 		BcryptRounds:           envInt("BCRYPT_ROUNDS", 12),
 		BootstrapAdminUser:     envStr("BOOTSTRAP_ADMIN_USER", ""),
 		BootstrapAdminPassword: envStr("BOOTSTRAP_ADMIN_PASSWORD", ""),
+
+		AgentSharedToken:     envStr("AGENT_SHARED_TOKEN", ""),
+		AgentDefaultEndpoint: envStr("AGENT_DEFAULT_ENDPOINT", ""),
 
 		AlertmanagerURL: envStr("ALERTMANAGER_URL", ""),
 	}

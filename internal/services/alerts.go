@@ -142,7 +142,12 @@ func NotifySyncRunFailure(db *gorm.DB, run *database.SyncRun) {
 		return
 	}
 	payload := BuildAlertmanagerPayload(task.ID, task.Name, run.ID, deref(run.Error), run.StartedAt,
-		"firing", map[string]string{"alertname": "SyncTaskFailed"}, true, nil)
+		"firing", map[string]string{
+			"alertname": "SyncTaskFailed",
+			// tool_kind lets operators split alerts by upstream (rclone
+			// vs redis-shake vs ...). Empty = legacy / unset.
+			"tool_kind": task.ToolKind,
+		}, true, nil)
 	if sent, _, _ := PostToAlertmanager(url, payload); sent {
 		now := database.NowUTC()
 		run.NotifiedAt = &now
@@ -165,7 +170,10 @@ func NotifyCheckRunFailure(db *gorm.DB, run *database.CheckRun) {
 		return
 	}
 	payload := BuildAlertmanagerPayload(task.ID, task.Name, run.ID, deref(run.Error), run.StartedAt,
-		"firing", map[string]string{"alertname": "CheckTaskFailed"}, false, nil)
+		"firing", map[string]string{
+			"alertname": "CheckTaskFailed",
+			"tool_kind": task.ToolKind,
+		}, false, nil)
 	if sent, _, _ := PostToAlertmanager(url, payload); sent {
 		now := database.NowUTC()
 		run.NotifiedAt = &now

@@ -20,11 +20,37 @@ var ResultKeys = []string{
 // RunCheck executes one consistency check (no concurrency guard, no
 // pre-check — parity with Python).
 func RunCheck(db *gorm.DB, client *rclone.Client, checkTaskID int64, trigger string) (*database.CheckRun, error) {
+	ctx := RunnerContext{Rclone: client}
+	return RunCheckWith(db, ctx, checkTaskID, trigger)
+}
+
+// RunCheckWith is the canonical entry point. Dispatches by
+// task.ToolKind — "redis-fullcheck" forwards to the agent via
+// runRedisFullCheckTask; "rclone" follows the legacy rcd path.
+func RunCheckWith(db *gorm.DB, ctx RunnerContext, checkTaskID int64, trigger string) (*database.CheckRun, error) {
 	var task database.CheckTask
 	if err := db.First(&task, checkTaskID).Error; err != nil {
 		return nil, fmt.Errorf("check task %d not found", checkTaskID)
 	}
 
+	// Multi-tool dispatch.
+	switch task.ToolKind {
+	case "redis-fullcheck":
+		return runRedisFullCheckTask(db, ctx, &task, trigger)
+	case "rclone", "":
+		// legacy default
+	default:
+		now := database.NowUTC()
+		run := &database.CheckRun{
+			TaskID: task.ID, Status: database.RunFailed, Trigger: trigger,
+			StartedAt: &now, FinishedAt: &now,
+			Error: strPtr("unsupported tool_kind: " + task.ToolKind),
+		}
+		_ = db.Create(run).Error
+		return run, fmt.Errorf("unsupported tool_kind: %s", task.ToolKind)
+	}
+
+	client := ctx.Rclone
 	check := &database.CheckRun{TaskID: task.ID, Status: database.RunPending, Trigger: trigger}
 	if err := db.Create(check).Error; err != nil {
 		return nil, err

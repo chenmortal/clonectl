@@ -223,6 +223,11 @@ type SyncRun struct {
 	ID         int64       `gorm:"primaryKey;autoIncrement" json:"id"`
 	TaskID     int64       `gorm:"not null;index:idx_sync_runs_task_status,priority:1" json:"task_id"`
 	JobID      *int64      `json:"job_id"`
+	// AgentTaskID is the opaque task identifier returned by a remote
+	// agent (redis-shake-agent / mongo-shake-agent / ...). Empty for
+	// rclone runs (those use JobID). The poller uses AgentTaskID to
+	// refresh progress via Driver.Status.
+	AgentTaskID *string     `gorm:"size:128;index" json:"agent_task_id,omitempty"`
 	Status     string      `gorm:"size:16;not null;default:pending;index:idx_sync_runs_task_status,priority:2;index" json:"status"`
 	Trigger    string      `gorm:"size:16;not null" json:"trigger"`
 	StartedAt  *time.Time  `json:"started_at"`
@@ -238,6 +243,9 @@ type CheckRun struct {
 	ID         int64       `gorm:"primaryKey;autoIncrement" json:"id"`
 	TaskID     int64       `gorm:"not null;index:idx_check_runs_task_status,priority:1" json:"task_id"`
 	JobID      *int64      `json:"job_id"`
+	// AgentTaskID is the opaque task identifier returned by a remote
+	// agent. See SyncRun.AgentTaskID for the rationale.
+	AgentTaskID *string     `gorm:"size:128;index" json:"agent_task_id,omitempty"`
 	Status     string      `gorm:"size:16;not null;default:pending;index:idx_check_runs_task_status,priority:2;index" json:"status"`
 	Trigger    string      `gorm:"size:16;not null" json:"trigger"`
 	StartedAt  *time.Time  `json:"started_at"`

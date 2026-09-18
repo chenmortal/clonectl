@@ -80,10 +80,44 @@ func resolveSide(db *gorm.DB, client *rclone.Client, dsID int64, path string) (s
 // RunTask executes one sync task: concurrency guard → run row (pending) →
 // remote push → optional blocking pre-check → async sync submission.
 // Returns the final run row (failed/running/skipped).
+//
+// RunTask is a thin wrapper that constructs a RunnerContext from the
+// rclone client and delegates to RunTaskWith. New code should call
+// RunTaskWith directly to access the agent registry; RunTask is kept
+// for handler/CLI call sites that don't yet need remote-agent
+// dispatch.
 func RunTask(db *gorm.DB, client *rclone.Client, cfgTimeout int, taskID int64, trigger string) (*database.SyncRun, error) {
+	ctx := RunnerContext{Rclone: client, CheckTimeout: cfgTimeout}
+	return RunTaskWith(db, ctx, taskID, trigger)
+}
+
+// RunTaskWith is the canonical entry point. It dispatches by
+// task.ToolKind — "rclone" follows the legacy rcd path, "redis-shake"
+// forwards to the agent via RedisRunner. Unknown / unsupported tool
+// kinds fail the run with a clear error.
+func RunTaskWith(db *gorm.DB, ctx RunnerContext, taskID int64, trigger string) (*database.SyncRun, error) {
 	var task database.SyncTask
 	if err := db.First(&task, taskID).Error; err != nil {
 		return nil, fmt.Errorf("task %d not found", taskID)
+	}
+
+	// Multi-tool dispatch. Adding a new tool = add a case here plus
+	// the corresponding runner file in runner_<tool>.go.
+	switch task.ToolKind {
+	case "redis-shake":
+		return runRedisShakeTask(db, ctx, &task, trigger)
+	case "rclone", "":
+		// "" is the pre-migration default for legacy rows; treat as rclone.
+	default:
+		// Unknown tool kind → fail the run, surface a clear error to UI.
+		now := database.NowUTC()
+		run := &database.SyncRun{
+			TaskID: taskID, Status: database.RunFailed, Trigger: trigger,
+			StartedAt: &now, FinishedAt: &now,
+			Error: strPtr("unsupported tool_kind: " + task.ToolKind),
+		}
+		_ = db.Create(run).Error
+		return run, fmt.Errorf("unsupported tool_kind: %s", task.ToolKind)
 	}
 
 	// Concurrency guard: pending|running run exists → skipped.
@@ -110,10 +144,11 @@ func RunTask(db *gorm.DB, client *rclone.Client, cfgTimeout int, taskID int64, t
 		return nil, err
 	}
 
+	client := ctx.Rclone
 	srcFs, dstFs, err := ResolveRefs(db, client, &task)
 	if err == nil && task.PreCheckTaskID != nil {
 		var proceed bool
-		proceed, err = runPreCheck(db, client, cfgTimeout, &task, run, *task.PreCheckTaskID, trigger)
+		proceed, err = runPreCheck(db, client, ctx.CheckTimeout, &task, run, *task.PreCheckTaskID, trigger)
 		if err == nil && !proceed {
 			// Run finalized by the pre-check (skipped): stop here.
 			return run, nil

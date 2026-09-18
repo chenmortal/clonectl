@@ -16,6 +16,8 @@ import (
 	"gorm.io/gorm"
 
 	clonectl "clonectl"
+	"clonectl/internal/agent"
+	"clonectl/internal/agent/redis"
 	"clonectl/internal/auth"
 	"clonectl/internal/cluster"
 	"clonectl/internal/config"
@@ -27,15 +29,17 @@ import (
 
 // App owns the whole server lifecycle (startup order mirrors app/main.py).
 type App struct {
-	Cfg      config.Settings
-	DB       *gorm.DB
-	Deps     *Deps
-	RC       *rclone.Client
-	Manager  *rclone.Manager
-	Sched    *scheduler.Service
-	Elector  *cluster.LeaderElector
-	srv      *http.Server
-	rootDirs struct{ static string } // resolved STATIC_DIR (dev override)
+	Cfg          config.Settings
+	DB           *gorm.DB
+	Deps         *Deps
+	RC           *rclone.Client
+	Manager      *rclone.Manager
+	Sched        *scheduler.Service
+	Elector      *cluster.LeaderElector
+	Agents       *agent.Registry
+	AgentLocator *agent.Locator
+	srv          *http.Server
+	rootDirs     struct{ static string } // resolved STATIC_DIR (dev override)
 }
 
 // NewApp builds an unstarted App.
@@ -100,6 +104,17 @@ func (a *App) Start() error {
 	// 5. rclone client + proxy.
 	rc := rclone.NewClient(rclone.RCNormal(cfg.RcloneRCAddr), cfg.RcloneRCUser, cfg.RcloneRCPass, 30*time.Second)
 	a.RC = rc
+
+	// Agent registry + locator. Currently only redis-shake / redis-
+	// fullcheck are wired; adding mongo-shake / kafka-shake later is
+	// one extra Register() call here plus a driver package.
+	agentHC := agent.NewHTTPClient(agent.HTTPClientOptions{
+		Timeout:   10 * time.Second,
+		AuthToken: agent.AuthToken(cfg.AgentSharedToken),
+	})
+	a.Agents = agent.NewRegistry()
+	redis.Register(a.Agents, agentHC)
+	a.AgentLocator = agent.NewLocator(agent.AgentEndpoint(cfg.AgentDefaultEndpoint))
 	var proxy *httputil.ReverseProxy
 	{
 		u, perr := url.Parse(rclone.RCNormal(cfg.RcloneRCAddr))
@@ -140,9 +155,15 @@ func (a *App) Start() error {
 	}
 
 	// 9. Scheduler (leader-gated user jobs).
+	runnerCtx := services.RunnerContext{
+		Rclone:       rc,
+		Agents:       a.Agents,
+		Locator:      a.AgentLocator,
+		CheckTimeout: cfg.CheckTimeout,
+	}
 	sched, err := scheduler.New(db, rc, cfg,
 		func(taskID int64) *int64 {
-			run, err := services.RunTask(db, rc, cfg.CheckTimeout, taskID, database.TriggerSchedule)
+			run, err := services.RunTaskWith(db, runnerCtx, taskID, database.TriggerSchedule)
 			if err != nil {
 				slog.Error("scheduled task failed", "id", taskID, "err", err)
 				return nil
@@ -150,7 +171,7 @@ func (a *App) Start() error {
 			return &run.ID
 		},
 		func(checkID int64) *int64 {
-			check, err := services.RunCheck(db, rc, checkID, database.TriggerSchedule)
+			check, err := services.RunCheckWith(db, runnerCtx, checkID, database.TriggerSchedule)
 			if err != nil {
 				slog.Error("scheduled check failed", "id", checkID, "err", err)
 				return nil
