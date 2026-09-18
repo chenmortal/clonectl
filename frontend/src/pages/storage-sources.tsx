@@ -26,15 +26,31 @@ import { errMessage, http } from "@/lib/api";
 import type { StorageSource } from "@/lib/types";
 import { fmtDateTime } from "@/lib/utils";
 
-// Only two backends are supported; each carries its own field set.
-type SourceType = "s3" | "local";
+// Three backends are supported; each carries its own field set.
+//   s3    — S3-compatible object storage (provider / endpoint / region).
+//   local — local filesystem rooted at a configurable prefix.
+//   redis — Redis instance (standalone / cluster / sentinel / proxy),
+//           backed by a remote redis-shake-agent; credentials live on
+//           DataSource, not StorageSource.
+type SourceType = "s3" | "local" | "redis";
 
 const TYPE_LABEL: Record<SourceType, string> = {
   s3: "S3 对象存储",
   local: "本地文件系统",
+  redis: "Redis",
 };
 
 const S3_PROVIDERS = ["AWS", "Minio", "Alibaba", "Tencent", "Other"] as const;
+
+const REDIS_MODES = ["standalone", "cluster", "sentinel", "proxy"] as const;
+type RedisMode = (typeof REDIS_MODES)[number];
+
+const REDIS_MODE_LABEL: Record<RedisMode, string> = {
+  standalone: "单机",
+  cluster: "集群",
+  sentinel: "哨兵",
+  proxy: "代理",
+};
 
 const NAME_RE = /^[a-zA-Z0-9_-]+$/;
 
@@ -152,12 +168,22 @@ function SourceDialog({
   const [customProviderVal, setCustomProviderVal] = React.useState("");
   const [path, setPath] = React.useState("");
   const [extra, setExtra] = React.useState("{}");
+  // Redis-only fields. The StorageSource.Extra carries the shared
+  // topology (mode / addresses / master_name); per-DSN credentials
+  // and per-DSN knobs live on DataSource.
+  const [redisMode, setRedisMode] = React.useState<RedisMode>("standalone");
+  const [redisAddresses, setRedisAddresses] = React.useState("");
+  const [redisMaster, setRedisMaster] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     setName(editing?.name ?? "");
-    const t = (editing?.type === "local" ? "local" : "s3") as SourceType;
+    const t = (
+      editing?.type === "local" ? "local"
+      : editing?.type === "redis" ? "redis"
+      : "s3"
+    ) as SourceType;
     setType(t);
     setEndpoint(editing?.endpoint ?? "");
     setRegion(editing?.region ?? "");
@@ -178,6 +204,25 @@ function SourceDialog({
     }
     const rest = { ...(editing?.extra ?? {}) };
     delete rest.provider;
+    // Redis-specific extras live under the same `extra` object so we
+    // don't need a separate DB column on StorageSource.
+    const extraMode = String(rest.mode ?? "");
+    if (t === "redis") {
+      const m = (REDIS_MODES as readonly string[]).includes(extraMode)
+        ? (extraMode as RedisMode)
+        : "standalone";
+      setRedisMode(m);
+      const addrs = Array.isArray(rest.addresses) ? (rest.addresses as unknown[]).map(String) : [];
+      setRedisAddresses(addrs.join("\n"));
+      setRedisMaster(String(rest.master_name ?? ""));
+    } else {
+      setRedisMode("standalone");
+      setRedisAddresses("");
+      setRedisMaster("");
+    }
+    delete rest.mode;
+    delete rest.addresses;
+    delete rest.master_name;
     setExtra(Object.keys(rest).length ? JSON.stringify(rest, null, 2) : "{}");
   }, [open, editing]);
 
@@ -208,13 +253,31 @@ function SourceDialog({
       body.endpoint = endpoint || null;
       body.region = region || null;
       body.extra = { ...extraObj, provider: prov };
-    } else {
+    } else if (type === "local") {
       // local: endpoint/region must be empty; path is the FS prefix.
       if (!path.trim()) {
         toast.error("请填写本地文件系统路径前缀");
         return;
       }
       body.path = path.trim();
+    } else {
+      // redis: address list (≥1) + mode, optional master_name for sentinel.
+      const addrs = redisAddresses
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (addrs.length === 0) {
+        toast.error("请填写至少一个 Redis 地址（host:port）");
+        return;
+      }
+      body.extra = {
+        ...extraObj,
+        mode: redisMode,
+        addresses: addrs,
+        ...(redisMode === "sentinel" && redisMaster.trim()
+          ? { master_name: redisMaster.trim() }
+          : {}),
+      };
     }
 
     setSubmitting(true);
@@ -266,6 +329,7 @@ function SourceDialog({
                 <SelectContent>
                   <SelectItem value="s3">{TYPE_LABEL.s3}</SelectItem>
                   <SelectItem value="local">{TYPE_LABEL.local}</SelectItem>
+                  <SelectItem value="redis">{TYPE_LABEL.redis}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -339,7 +403,7 @@ function SourceDialog({
                 凭据（Access Key / Secret Key）在「数据源」上按需填写，不存放在存储源。
               </p>
             </>
-          ) : (
+          ) : type === "local" ? (
             <div className="space-y-1.5">
               <Label>文件系统路径前缀</Label>
               <Input
@@ -350,6 +414,55 @@ function SourceDialog({
               />
               <p className="text-[11px] text-muted-foreground">
                 该存储源下所有数据源的路径都解析到此目录之下；无 endpoint、无需凭据。
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>拓扑（mode）</Label>
+                  <Select
+                    value={redisMode}
+                    onValueChange={(v) => setRedisMode(v as RedisMode)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {REDIS_MODES.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {REDIS_MODE_LABEL[m]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {redisMode === "sentinel" && (
+                  <div className="space-y-1.5">
+                    <Label>Master 名称</Label>
+                    <Input
+                      placeholder="mymaster"
+                      value={redisMaster}
+                      onChange={(e) => setRedisMaster(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label>地址（host:port，每行一个，或逗号 / 空格分隔）</Label>
+                <textarea
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  rows={3}
+                  placeholder={"10.0.0.1:6379\n10.0.0.2:6379"}
+                  value={redisAddresses}
+                  onChange={(e) => setRedisAddresses(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  由远端 redis-shake-agent 实际连接；此存储源仅描述拓扑与种子节点。
+                </p>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                凭据（密码）在「数据源」页按需填写；同一存储源可被多个数据源复用。
               </p>
             </div>
           )}
