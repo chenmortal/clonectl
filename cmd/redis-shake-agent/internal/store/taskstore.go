@@ -62,12 +62,16 @@ func (t *Task) State() string {
 	switch {
 	case t.Process != nil && t.Process.IsRunning():
 		return "running"
+	case t.Process != nil && !t.Process.EndedAt().IsZero():
+		// Process has finished; reflect its exit code rather than
+		// the (typically-unset) Task.EndedAt timestamp.
+		if t.Process.ExitCode() == 0 {
+			return "success"
+		}
+		return "failed"
 	case t.EndedAt.IsZero():
 		return "queued"
 	default:
-		if t.Process != nil && t.Process.ExitCode() == 0 {
-			return "success"
-		}
 		return "failed"
 	}
 }

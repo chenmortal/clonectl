@@ -254,6 +254,9 @@ func runRedisFullCheckTask(db *gorm.DB, ctx RunnerContext, task *database.CheckT
 	if task.RedisCompareMode == 0 {
 		mode = "1"
 	}
+	// Spec.Mode is also required — the driver validates it before
+	// forwarding to the agent. Both fields must agree.
+	spec.Mode = mode
 
 	req := agent.SubmitRequest{
 		Tool:    agent.ToolRedisFullCheck,
