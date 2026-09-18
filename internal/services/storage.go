@@ -55,7 +55,20 @@ func localFSRoot(src *database.StorageSource) string {
 // ListObjects — because rclone's provider-based auto mode picks
 // ListObjectsV2 for old OSS builds that don't implement it; a list_version
 // in extra wins.
+//
+// type="redis": critical decoupling point. rclone does NOT own Redis
+// connections — the redis-shake-agent does. We return an EMPTY params
+// dict and rely on the runner to never send /config/create for redis
+// sources (the redis path uses agent.Submit, not rcd). This function
+// exists for the StorageSource row but is intentionally a no-op for
+// the redis branch so future readers understand the boundary.
 func BuildRemoteParameters(src *database.StorageSource, ds *database.DataSource) database.JSONObject {
+	if src.Type == "redis" {
+		// No rclone remote is registered for redis sources; the
+		// redis-shake-agent talks to Redis directly. Return empty.
+		return database.JSONObject{}
+	}
+
 	params := src.Extra.Clone()
 	if src.Endpoint != nil {
 		params["endpoint"] = *src.Endpoint

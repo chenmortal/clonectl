@@ -1,12 +1,16 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"clonectl/internal/agent"
+	"clonectl/internal/agent/redis"
 	"clonectl/internal/database"
 	"clonectl/internal/services"
 )
@@ -64,7 +68,10 @@ func toDataSourceOut(ds *database.DataSource, currentPerm string) gin.H {
 		"id": ds.ID, "name": ds.Name, "storage_source_id": ds.StorageSourceID,
 		"path":          ds.Path,
 		"access_key_id": strNil(ds.AccessKeyID), "secret_access_key": strNil(ds.SecretAccessKey),
+		// password is intentionally NEVER echoed back; the agent holds
+		// the live secret on disk-free TOML/argv until Submit completes.
 		"description": strNil(ds.Description),
+		"redis_configs": ds.RedisConfigs,
 		"last_verified_at": NaiveUTCPtr(ds.LastVerifiedAt), "last_verified_ok": boolNil(ds.LastVerifiedOK),
 		"created_at": NaiveUTC(ds.CreatedAt), "updated_at": NaiveUTC(ds.UpdatedAt),
 		"current_user_permission": currentPerm,
@@ -78,10 +85,11 @@ func boolNil(b *bool) any {
 	return *b
 }
 
-// enforceCredentials: AK/SK required unless the source type is local.
+// enforceCredentials: AK/SK required unless the source type is local
+// or redis (redis carries a password on DataSource.Password instead).
 // Returns an error message or "".
 func enforceCredentials(src *database.StorageSource, ak, sk *string) string {
-	if src.Type == "local" {
+	if src.Type == "local" || src.Type == "redis" {
 		return ""
 	}
 	if (ak == nil || *ak == "") || (sk == nil || *sk == "") {
@@ -120,12 +128,19 @@ func (d *Deps) ListDataSources(c *gin.Context) {
 }
 
 type dataSourceCreateIn struct {
-	Name            string  `json:"name"`
-	StorageSourceID int64   `json:"storage_source_id"`
-	Path            string  `json:"path"`
-	AccessKeyID     *string `json:"access_key_id"`
-	SecretAccessKey *string `json:"secret_access_key"`
-	Description     *string `json:"description"`
+	Name            string         `json:"name"`
+	StorageSourceID int64          `json:"storage_source_id"`
+	Path            string         `json:"path"`
+	AccessKeyID     *string        `json:"access_key_id"`
+	SecretAccessKey *string        `json:"secret_access_key"`
+	// Password is the per-DSN credential for backends that don't use
+	// AK/SK (currently: redis). Stored alongside AK/SK; never echoed
+	// back via toDataSourceOut.
+	Password        *string        `json:"password,omitempty"`
+	// RedisConfigs carries per-DSN Redis knobs (db index, key_prefix,
+	// tls). Empty / omitted → empty JSON object in the DB.
+	RedisConfigs    database.JSONObject `json:"redis_configs,omitempty"`
+	Description     *string        `json:"description"`
 }
 
 // CreateDataSource (leader+admin|edit) — inserts an admin DataSourceBinding
@@ -146,6 +161,9 @@ func (d *Deps) CreateDataSource(c *gin.Context) {
 	if in.SecretAccessKey != nil {
 		v.Str("secret_access_key", *in.SecretAccessKey, StrOpt{Max: 512})
 	}
+	if in.Password != nil {
+		v.Str("password", *in.Password, StrOpt{Max: 512})
+	}
 	if in.Description != nil {
 		v.Str("description", *in.Description, StrOpt{Max: 512})
 	}
@@ -164,10 +182,16 @@ func (d *Deps) CreateDataSource(c *gin.Context) {
 	}
 
 	user := CurrentUser(c)
+	redisConfigs := in.RedisConfigs
+	if redisConfigs == nil {
+		redisConfigs = database.JSONObject{}
+	}
 	ds := database.DataSource{
 		Name: in.Name, StorageSourceID: in.StorageSourceID, Path: in.Path,
 		AccessKeyID: in.AccessKeyID, SecretAccessKey: in.SecretAccessKey,
-		Description: in.Description, OwnerUserID: user.ID,
+		Password:     in.Password,
+		RedisConfigs: redisConfigs,
+		Description:  in.Description, OwnerUserID: user.ID,
 	}
 	err := d.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&ds).Error; err != nil {
@@ -262,6 +286,25 @@ func (d *Deps) UpdateDataSource(c *gin.Context) {
 		}
 		ds.SecretAccessKey = sk
 	}
+	if pw, ok, err := p.Str("password"); err != nil {
+		AbortInvalidJSON(c, err)
+		return
+	} else if ok {
+		if pw != nil {
+			v.Str("password", *pw, StrOpt{Max: 512})
+		}
+		ds.Password = pw
+	}
+	if rc, ok, err := p.Object("redis_configs"); err != nil {
+		AbortInvalidJSON(c, err)
+		return
+	} else if ok {
+		if rc == nil {
+			ds.RedisConfigs = database.JSONObject{}
+		} else {
+			ds.RedisConfigs = database.JSONObject(rc)
+		}
+	}
 
 	newSrcID, hasSrc, err := p.Int64("storage_source_id")
 	if err != nil {
@@ -333,6 +376,10 @@ func (d *Deps) DeleteDataSource(c *gin.Context) {
 // Gated at read-level: verification is an observational action (rclone
 // List + a temporary WriteProbe that's cleaned up), not a configuration
 // change.
+//
+// Redis sources bypass rclone entirely: we run RedisPingProbe
+// (PING + AUTH + INFO server) directly via the agent's RESP client
+// since there is no FS to list or write to.
 func (d *Deps) VerifyDataSource(c *gin.Context) {
 	ds := dsFrom(c)
 	var src database.StorageSource
@@ -340,6 +387,38 @@ func (d *Deps) VerifyDataSource(c *gin.Context) {
 		AbortDetail(c, http.StatusInternalServerError, "data source has no storage source")
 		return
 	}
+
+	var errMsg *string
+	readOK, writeOK := false, false
+	setErr := func(s string) { e := s; errMsg = &e }
+
+	if src.Type == "redis" {
+		// Branch: redis verification goes through the inline RESP client
+		// (no rclone, no agent). We pick the first address from the
+		// StorageSource.Extra.addresses list and use the DSN's password
+		// (if any) for AUTH.
+		probe := probeRedisSource(&src, ds)
+		now := database.NowUTC()
+		ds.LastVerifiedAt = &now
+		ok := probe.Reachable && probe.Authenticated
+		ds.LastVerifiedOK = &ok
+		d.DB.Save(ds)
+		if !ok {
+			setErr(probe.Error)
+		}
+		readOK = probe.Reachable
+		writeOK = probe.Authenticated
+		c.JSON(http.StatusOK, gin.H{
+			"read_ok":  readOK,
+			"write_ok": writeOK, // AUTH success stands in for write capability
+			"version":  probe.Version,
+			"latency_ms": probe.LatencyMS,
+			"error":    errMsg,
+			"probed_at": NaiveUTC(now),
+		})
+		return
+	}
+
 	if d.RC == nil {
 		AbortDetail(c, http.StatusServiceUnavailable, "rclone client not available")
 		return
@@ -348,9 +427,6 @@ func (d *Deps) VerifyDataSource(c *gin.Context) {
 	client := d.RC
 	remoteName := services.DSRemoteName(ds)
 	remoteSpec := remoteName + ":" + services.SidePath(&src, ds.Path)
-	var errMsg *string
-	readOK, writeOK := false, false
-	setErr := func(s string) { e := s; errMsg = &e }
 
 	// Push the remote (idempotent); failure here is not fatal yet.
 	if err := services.EnsureDataSourceRemote(d.DB, client, ds); err != nil {
@@ -383,6 +459,61 @@ func (d *Deps) VerifyDataSource(c *gin.Context) {
 		"read_ok": readOK, "write_ok": writeOK,
 		"error": errMsg, "probed_at": NaiveUTC(now),
 	})
+}
+
+// probeRedisSource renders a StorageSource.Extra + DataSource.Password
+// pair into the inline ProbeRedis signature, used by the verify
+// endpoint above. Kept here so the handler file owns the "what
+// fields to read" knowledge without leaking it into the redis
+// package's HTTP-free ProbeRedis entry.
+func probeRedisSource(src *database.StorageSource, ds *database.DataSource) redisProbeResult {
+	mode, _ := src.Extra["mode"].(string)
+	if mode == "" {
+		mode = "standalone"
+	}
+	addrs := extractAddresses(src.Extra)
+	ep := agent.Endpoint{Mode: mode, Addresses: addrs}
+	if mn, ok := src.Extra["master_name"].(string); ok {
+		ep.MasterName = mn
+	}
+	pw := ""
+	if ds.Password != nil {
+		pw = *ds.Password
+	}
+	return runProbeRedis(ep, pw)
+}
+
+func extractAddresses(extra database.JSONObject) []string {
+	raw, ok := extra["addresses"]
+	if !ok {
+		return nil
+	}
+	arr, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, a := range arr {
+		if s, ok := a.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// redisProbeResult is a hand-rolled alias of redis.ProbeResult so this
+// file does not have to import the redis package twice (the real one
+// is referenced through runProbeRedis below). Keeping the alias here
+// avoids pulling redis.* into every call site.
+type redisProbeResult = redis.ProbeResult
+
+// runProbeRedis wraps redis.ProbeRedis with a short context timeout
+// so a hung Redis target cannot block the verify endpoint past the
+// HTTP request deadline.
+func runProbeRedis(ep agent.Endpoint, password string) redis.ProbeResult {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return redis.ProbeRedis(ctx, ep, password)
 }
 
 // --- bindings ---

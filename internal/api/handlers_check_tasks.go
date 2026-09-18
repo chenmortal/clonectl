@@ -19,6 +19,8 @@ func toCheckTaskOut(t *database.CheckTask, currentPerm string) gin.H {
 		"src_path": t.SrcPath, "dst_path": t.DstPath,
 		"cron": strNil(t.Cron), "enabled": t.Enabled,
 		"check_options": t.CheckOptions,
+		"tool_kind":            t.ToolKind,
+		"redis_compare_mode":   t.RedisCompareMode,
 		"creator_user_id": t.CreatorUserID,
 		"created_at":      NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
 		"current_user_permission": currentPerm,

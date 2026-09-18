@@ -86,6 +86,16 @@ type DataSource struct {
 	Path            string     `gorm:"size:512;not null" json:"path"`
 	AccessKeyID     *string    `gorm:"size:255" json:"access_key_id"`
 	SecretAccessKey *string    `gorm:"size:512" json:"secret_access_key"`
+	// Password is the per-DSN credential used by non-AK/SK backends
+	// (currently: redis). Stored alongside AK/SK so the encryption
+	// pipeline (see internal/auth/credentials) reuses the same
+	// wrapping code. Empty for s3 / local.
+	Password        *string    `gorm:"size:512" json:"password,omitempty"`
+	// RedisConfigs carries tool-specific knobs for type=redis data
+	// sources (db index, key_prefix, tls). StorageSource.Extra still
+	// holds the shared topology (addresses / master_name); this column
+	// only holds what varies per DSN.
+	RedisConfigs    JSONObject `gorm:"not null;default:'{}'" json:"redis_configs"`
 	Description     *string    `gorm:"size:512" json:"description"`
 	OwnerUserID     int64      `gorm:"not null;index;uniqueIndex:idx_ds_owner_name,priority:1" json:"owner_user_id"`
 	LastVerifiedAt  *time.Time `json:"last_verified_at"`
@@ -132,6 +142,15 @@ type SyncTask struct {
 	Enabled         bool       `gorm:"not null" json:"enabled"`
 	RcloneOptions   JSONObject `gorm:"not null" json:"rclone_options"`
 	PreCheckTaskID  *int64     `json:"pre_check_task_id"`
+	// ToolKind selects which runner this task dispatches to.
+	//   "rclone"      — default, the existing rclone rcd pipeline.
+	//   "redis-shake" — forks redis-shake on a remote agent.
+	// default:"rclone" + index keep dev DBs (pre-existing rows) working.
+	ToolKind        string     `gorm:"size:32;not null;default:'rclone';index" json:"tool_kind"`
+	// RedisMode is the upstream redis-shake reader mode for tool_kind=
+	// "redis-shake" (sync_reader / rdb_reader / scan_reader). Empty
+	// for tool_kind="rclone".
+	RedisMode       string     `gorm:"size:32" json:"redis_mode,omitempty"`
 	// CreatorUserID is recorded on creation but does NOT grant access by itself.
 	// Access is governed by sync_task_bindings_v2 (a default admin row is
 	// inserted for the creator at create time and may be revoked).
@@ -163,11 +182,18 @@ type CheckTask struct {
 	Name            string     `gorm:"size:128;not null" json:"name"`
 	SrcDataSourceID int64      `gorm:"not null;index" json:"src_data_source_id"`
 	SrcPath         string     `gorm:"size:512;not null" json:"src_path"`
-	DstDataSourceID int64      `gorm:"not null;index" json="dst_data_source_id"`
+	DstDataSourceID int64      `gorm:"not null;index" json:"dst_data_source_id"`
 	DstPath         string     `gorm:"size:512;not null" json:"dst_path"`
 	Cron            *string    `gorm:"size:128" json:"cron"`
 	Enabled         bool       `gorm:"not null" json:"enabled"`
 	CheckOptions    JSONObject `gorm:"not null" json:"check_options"`
+	// ToolKind selects which runner this task dispatches to.
+	//   "rclone"          — default, the existing rclone rcd pipeline.
+	//   "redis-fullcheck" — forks redis-full-check on a remote agent.
+	ToolKind           string `gorm:"size:32;not null;default:'rclone';index" json:"tool_kind"`
+	// RedisCompareMode is the upstream compare_mode integer (1..4) for
+	// tool_kind="redis-fullcheck". Zero for tool_kind="rclone".
+	RedisCompareMode   int    `gorm:"not null;default:0" json:"redis_compare_mode,omitempty"`
 	// CreatorUserID is recorded on creation; access is governed by
 	// check_task_bindings_v2 (default admin row for the creator).
 	// default:0 keeps SQLite's ALTER TABLE ADD NOT NULL happy for pre-existing

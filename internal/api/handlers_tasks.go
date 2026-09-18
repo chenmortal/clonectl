@@ -23,6 +23,8 @@ func toTaskOut(t *database.SyncTask, currentPerm string) gin.H {
 		"src_path": t.SrcPath, "dst_path": t.DstPath,
 		"mode": t.Mode, "cron": t.Cron, "enabled": t.Enabled,
 		"rclone_options": t.RcloneOptions, "pre_check_task_id": intNil(t.PreCheckTaskID),
+		"tool_kind":  t.ToolKind,
+		"redis_mode": t.RedisMode,
 		"creator_user_id": t.CreatorUserID,
 		"created_at":      NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
 		"current_user_permission": currentPerm,

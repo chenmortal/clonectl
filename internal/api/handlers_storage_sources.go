@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -12,10 +13,12 @@ import (
 var storageSourceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // Storage source kind → which fields are valid. Encoded in the handlers as
-// well as the frontend form (kind: 's3'|'local' only at the UI level).
+// well as the frontend form. Adding a backend = add an entry here and a
+// matching case in validateSSConstraints / BuildRemoteParameters.
 var validStorageTypes = map[string]struct{}{
 	"s3":    {},
 	"local": {},
+	"redis": {},
 }
 
 func isValidStorageType(t string) bool {
@@ -66,9 +69,12 @@ type storageSourceCreateIn struct {
 // validateSSConstraints enforces the type-specific contract:
 //   - s3: provider in extra; endpoint recommended
 //   - local: endpoint/region must be empty; path is the FS prefix
+//   - redis: topology lives in extra; s3-only fields are forbidden;
+//     passwords go on DataSource (not StorageSource) so multiple DSNs
+//     can share one Redis StorageSource template.
 func validateSSConstraints(c *gin.Context, in storageSourceCreateIn, v *Validator) {
 	if !isValidStorageType(in.Type) {
-		v.add("type", "type must be one of: s3, local", "enum")
+		v.add("type", "type must be one of: s3, local, redis", "enum")
 		return
 	}
 	switch in.Type {
@@ -87,6 +93,43 @@ func validateSSConstraints(c *gin.Context, in storageSourceCreateIn, v *Validato
 		}
 		if in.Region != nil && *in.Region != "" {
 			v.add("region", "region is for network backends; omit for local", "value_error")
+		}
+	case "redis":
+		// Redis has no S3-style endpoint/region; path holds the key prefix.
+		if in.Endpoint != nil && *in.Endpoint != "" {
+			v.add("endpoint", "endpoint is for s3; omit for redis (use extra.addresses)", "value_error")
+		}
+		if in.Region != nil && *in.Region != "" {
+			v.add("region", "region is for s3; omit for redis", "value_error")
+		}
+		if in.Extra == nil {
+			v.add("extra", "extra is required for redis (topology + addresses)", "missing")
+			return
+		}
+		mode, _ := in.Extra["mode"].(string)
+		switch mode {
+		case "standalone", "cluster", "sentinel", "proxy":
+			// ok
+		default:
+			v.add("extra.mode", "redis mode must be one of: standalone, cluster, sentinel, proxy", "enum")
+			return
+		}
+		// addresses: required, ≥1
+		raw, ok := in.Extra["addresses"].([]any)
+		if !ok || len(raw) == 0 {
+			v.add("extra.addresses", "at least one host:port is required", "missing")
+			return
+		}
+		for i, a := range raw {
+			s, _ := a.(string)
+			if s == "" {
+				v.add("extra.addresses["+strconv.Itoa(i)+"]", "address must be non-empty host:port", "value_error")
+			}
+		}
+		if mode == "sentinel" {
+			if mn, _ := in.Extra["master_name"].(string); mn == "" {
+				v.add("extra.master_name", "sentinel topology requires master_name", "missing")
+			}
 		}
 	}
 }
