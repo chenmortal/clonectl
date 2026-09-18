@@ -4,9 +4,7 @@ import { toast } from "sonner";
 
 import { http, errMessage } from "@/lib/api";
 import type {
-  CheckTask,
   CheckTaskBinding,
-  SyncTask,
   SyncTaskBinding,
   TaskPermission,
   UserOut,
