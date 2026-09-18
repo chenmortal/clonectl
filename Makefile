@@ -15,7 +15,7 @@ PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 RELEASE_DIR := dist/release
 
 .PHONY: help build test vet fmt web-dist all release clean verify-release \
-	debug debug-backend debug-frontend
+	debug debug-backend debug-frontend build-agent test-agent
 
 help: ## 显示各目标说明
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -83,8 +83,16 @@ verify-dist: ## 校验 dist/web 已构建（防止把空占位发布出去）
 		echo "ERROR: dist/web/index.html 不存在 —— 先执行 make web-dist"; exit 1; }
 
 clean: ## 清理构建产物
-	rm -rf dist/release clonectl
+	rm -rf dist/release clonectl bin/redis-shake-agent
 	-git clean -fX dist/web
+
+build-agent: ## 构建 redis-shake-agent（独立 Go module）
+	cd cmd/redis-shake-agent && \
+		go build -trimpath -ldflags "$(LDFLAGS)" \
+			-o ../../bin/redis-shake-agent .
+
+test-agent: ## 运行 redis-shake-agent 测试
+	cd cmd/redis-shake-agent && go test -race ./...
 
 verify-release: ## 抽检发布产物：解压 + --version + 帮助
 	@test -d $(RELEASE_DIR) || { echo "no release output; run make release"; exit 1; }
