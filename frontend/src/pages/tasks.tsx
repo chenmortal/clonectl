@@ -115,6 +115,9 @@ export default function Tasks() {
             {t.enabled ? "启用" : "停用"}
           </Badge>
           <Badge variant="outline">{t.mode}</Badge>
+          {t.tool_kind && t.tool_kind !== "rclone" && (
+            <Badge variant="secondary">{t.tool_kind}</Badge>
+          )}
           {pre && <Badge variant="info">前检：{pre}</Badge>}
         </div>
       </div>,

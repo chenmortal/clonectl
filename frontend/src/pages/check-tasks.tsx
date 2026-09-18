@@ -155,6 +155,9 @@ export default function CheckTasks() {
           {t.enabled ? "启用" : "停用"}
         </Badge>
         <Badge variant="outline">手动</Badge>
+        {t.tool_kind && t.tool_kind !== "rclone" && (
+          <Badge variant="secondary">{t.tool_kind}</Badge>
+        )}
         {t.cron && <Badge variant="info">cron</Badge>}
       </div>
     </div>,
