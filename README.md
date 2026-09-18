@@ -1,9 +1,9 @@
-# rclone-sync
+# clonectl
 
 基于 rclone rcd 的对象存储周期同步服务（**Go 实现**）：gin 提供 API 与 Web 控制台，[go-co-op/gocron](https://github.com/go-co-op/gocron) 按 cron 调度并驱动主备选举与执行监控，任务配置与执行结果持久化到数据库（SQLite/MySQL），生产发布时单二进制内嵌前端静态资源。
 
 > 旧版（Python / FastAPI + APScheduler）实现已被本重写替代，历史见 git
-> baseline 提交。旧数据库可用 `rclone-sync migrate-legacy` 一次性拷贝到新
+> baseline 提交。旧数据库可用 `clonectl migrate-legacy` 一次性拷贝到新
 > `*_v2` 表（ID 不变，旧表不动，可回滚）。
 
 ## 功能
@@ -25,7 +25,7 @@
 ### 1. 构建
 
 ```bash
-make all          # npm build 前端 + go build（单二进制 ./rclone-sync）
+make all          # npm build 前端 + go build（单二进制 ./clonectl）
 # 或仅后端：make build
 ```
 
@@ -39,7 +39,7 @@ cp .env.example .env    # 按需修改
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///./rclone_sync.db` | MySQL 用 Go DSN：`user:pass@tcp(host:3306)/db`（凭据里的 `@` `#` 等字符原样填写，无需转义；兼容 `sqlite:///` 写法） |
+| `DATABASE_URL` | `sqlite:///./clonectl.db` | MySQL 用 Go DSN：`user:pass@tcp(host:3306)/db`（凭据里的 `@` `#` 等字符原样填写，无需转义；兼容 `sqlite:///` 写法） |
 | `RCLONE_RC_ADDR` | `0.0.0.0:5572` | rclone 单一地址：托管时=rcd 监听地址（拨号地址自动派生）；`RCLONE_MANAGED=false` 时=外部 rcd 拨号地址（可带 `http(s)://` 前缀） |
 | `RCLONE_RC_USER` / `RCLONE_RC_PASS` | `admin` / `6051` | RC API 认证 |
 | `RCLONE_MANAGED` | `true` | `true` 时 `serve` 自动拉起/停止 rcd 子进程 |
@@ -59,7 +59,7 @@ cp .env.example .env    # 按需修改
 ### 3. 启动
 
 ```bash
-./rclone-sync serve
+./clonectl serve
 # 浏览器访问 http://<host>:8000/ → 登录即用
 ```
 
@@ -69,20 +69,20 @@ cp .env.example .env    # 按需修改
 ## CLI
 
 ```text
-rclone-sync serve            启动 API + gocron 调度器
-rclone-sync stop             停止主服务与被管的 rclone rcd
-rclone-sync run-once TASK_ID 立即执行指定任务一次（不经调度器）
-rclone-sync status           检查 rcd / 服务 / 集群状态
-rclone-sync migrate-legacy   旧 Python 表 → 新 *_v2 表（幂等，不改旧表）
+clonectl serve            启动 API + gocron 调度器
+clonectl stop             停止主服务与被管的 rclone rcd
+clonectl run-once TASK_ID 立即执行指定任务一次（不经调度器）
+clonectl status           检查 rcd / 服务 / 集群状态
+clonectl migrate-legacy   旧 Python 表 → 新 *_v2 表（幂等，不改旧表）
 ```
 
 `serve` 支持覆盖监听地址；所有子命令支持指定配置文件：
 
 ```bash
 # 指定配置文件 + 监听地址（host:port / :port / 纯端口）
-rclone-sync --config /etc/rclone-sync/prod.env serve --bind 127.0.0.1:8000
-rclone-sync --config /etc/rclone-sync/prod.env serve --bind :8000
-rclone-sync --config /etc/rclone-sync/prod.env serve --bind 8000
+clonectl --config /etc/clonectl/prod.env serve --bind 127.0.0.1:8000
+clonectl --config /etc/clonectl/prod.env serve --bind :8000
+clonectl --config /etc/clonectl/prod.env serve --bind 8000
 ```
 
 > `--config` 缺省读取工作目录的 `.env`；显式指定的文件不存在会直接报错。
@@ -115,9 +115,9 @@ CAS 选举，无需 etcd/keepalived。代码：`internal/cluster`。
 
 ```bash
 # 节点 A
-NODE_ID=nodeA CLUSTER_NAME=rclone-sync DATABASE_URL='user:pass@tcp(db:3306)/rclone_sync' ./rclone-sync serve
+NODE_ID=nodeA CLUSTER_NAME=clonectl DATABASE_URL='user:pass@tcp(db:3306)/clonectl' ./clonectl serve
 # 节点 B（同一 DB）
-NODE_ID=nodeB CLUSTER_NAME=rclone-sync DATABASE_URL='user:pass@tcp(db:3306)/rclone_sync' API_PORT=8001 ./rclone-sync serve
+NODE_ID=nodeB CLUSTER_NAME=clonectl DATABASE_URL='user:pass@tcp(db:3306)/clonectl' API_PORT=8001 ./clonectl serve
 # 故障演练：kill nodeA，约 lease 周期后
 curl :8001/healthz | jq '.is_leader'   # true
 ```

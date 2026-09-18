@@ -8,8 +8,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
 )
 
 // DSRemoteName is the deterministic rclone-side remote name for a DataSource.

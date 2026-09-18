@@ -6,8 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
 )
 
 // Startup auto-migration: legacy storage_configs → storage source + default

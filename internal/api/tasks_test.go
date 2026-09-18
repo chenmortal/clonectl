@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
-	"rclone_sync/internal/rclone/rctest"
-	"rclone_sync/internal/services"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
+	"clonectl/internal/rclone/rctest"
+	"clonectl/internal/services"
 )
 
 // tasksEnv: admin+edit users, one storage source + two data sources, fake rcd.

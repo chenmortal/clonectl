@@ -34,7 +34,7 @@ import { useGetIdentity, useLogout } from "@refinedev/core";
 import type { Identity } from "@/providers/auth";
 import { useSiteTitle } from "@/providers/site";
 
-const COLLAPSE_KEY = "rclone-sync.sidebar";
+const COLLAPSE_KEY = "clonectl.sidebar";
 
 interface MenuItem {
   to: string;
@@ -61,7 +61,7 @@ function useTheme(): [boolean, () => void] {
   const toggle = useCallback(() => {
     const next = !document.documentElement.classList.contains("dark");
     document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("rclone-sync.theme", next ? "dark" : "light");
+    localStorage.setItem("clonectl.theme", next ? "dark" : "light");
     setDark(next);
   }, []);
   return [dark, toggle];

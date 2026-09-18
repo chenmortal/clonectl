@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 func alertDB(t *testing.T) *gorm.DB {
@@ -32,7 +32,7 @@ func TestBuildAlertmanagerPayloadFiring(t *testing.T) {
 	assert.Equal(t, "4", p["version"])
 	assert.Equal(t, "{run.sync}.7", p["groupKey"])
 	assert.Equal(t, "firing", p["status"])
-	assert.Equal(t, "rclone-sync", p["receiver"])
+	assert.Equal(t, "clonectl", p["receiver"])
 
 	alerts := p["alerts"].([]any)
 	a := alerts[0].(map[string]any)

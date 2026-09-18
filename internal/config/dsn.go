@@ -22,14 +22,14 @@ import (
 func ParseDatabaseURL(raw string) (dialect, dsn string, err error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		raw = "sqlite:///./rclone_sync.db"
+		raw = "sqlite:///./clonectl.db"
 	}
 
 	switch {
 	case strings.HasPrefix(raw, "sqlite"):
 		return parseSQLite(raw)
 	case strings.HasPrefix(raw, "mysql"):
-		return "", "", fmt.Errorf(`mysql DATABASE_URL must be a Go DSN like "user:pass@tcp(host:3306)/rclone_sync", got %q`, raw)
+		return "", "", fmt.Errorf(`mysql DATABASE_URL must be a Go DSN like "user:pass@tcp(host:3306)/clonectl", got %q`, raw)
 	case strings.Contains(raw, "@tcp("):
 		sep := "?"
 		if strings.Contains(raw, "?") {

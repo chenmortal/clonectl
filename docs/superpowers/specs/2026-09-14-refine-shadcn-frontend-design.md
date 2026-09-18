@@ -28,7 +28,7 @@ web/src/
 ├── main.tsx               # <Refine> 装配（providers + resources + routes）
 ├── providers/
 │   ├── data-provider.ts   # refine 动作 → /api/* 映射 + FastAPI 错误体转换
-│   ├── auth-provider.ts   # login/me/logout；token 键名保持 rclone-sync.token
+│   ├── auth-provider.ts   # login/me/logout；token 键名保持 clonectl.token
 │   └── notification.tsx   # refine notificationProvider → sonner
 ├── components/
 │   ├── layout/            # 侧边栏（可折叠）+ 顶栏（rcd 徽标/主题切换/用户菜单）
@@ -47,7 +47,7 @@ storages 旧版页。自定义动作（trigger/verify/bindings/调度 RunNow）�
 
 ## 关键行为保持
 
-- token 键 `rclone-sync.token`；401 → 清 token → /login
+- token 键 `clonectl.token`；401 → 清 token → /login
 - errMessage() 语义（FastAPI detail string/[]）
 - 状态彩色 Badge（success 绿 / running 蓝脉冲 / failed 红 / skipped 灰）、Progress 进度条
 - 数字 tabular-nums、卡片圆角细边框、表格 hover 高亮

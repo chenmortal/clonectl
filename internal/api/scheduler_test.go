@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/scheduler"
+	"clonectl/internal/database"
+	"clonectl/internal/scheduler"
 )
 
 // firstTaskJobID picks the user task job's id out of a jobs list payload.

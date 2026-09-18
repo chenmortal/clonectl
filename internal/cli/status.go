@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"rclone_sync/internal/config"
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
+	"clonectl/internal/config"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
 )
 
 var statusCmd = &cobra.Command{
@@ -39,9 +39,9 @@ var statusCmd = &cobra.Command{
 		base := fmt.Sprintf("http://%s:%d", host, cfg.APIPort)
 		health, err := fetchHealthz(base)
 		if err != nil {
-			fmt.Printf("rclone-sync service: stopped (%s/healthz unreachable)\n", base)
+			fmt.Printf("clonectl service: stopped (%s/healthz unreachable)\n", base)
 		} else {
-			fmt.Printf("rclone-sync service: running (%s/healthz, rclone_reachable=%v)\n",
+			fmt.Printf("clonectl service: running (%s/healthz, rclone_reachable=%v)\n",
 				base, health["rclone_reachable"])
 		}
 

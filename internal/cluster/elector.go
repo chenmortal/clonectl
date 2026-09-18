@@ -14,7 +14,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // LeaderElector is the per-process election participant.

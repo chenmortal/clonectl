@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
-	"rclone_sync/internal/rclone/rctest"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
+	"clonectl/internal/rclone/rctest"
 )
 
 // seedDSEnv creates admin+edit+view users, one s3 storage source, and wires a

@@ -15,14 +15,14 @@ import (
 
 	"gorm.io/gorm"
 
-	rclone_sync "rclone_sync"
-	"rclone_sync/internal/auth"
-	"rclone_sync/internal/cluster"
-	"rclone_sync/internal/config"
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
-	"rclone_sync/internal/scheduler"
-	"rclone_sync/internal/services"
+	clonectl "clonectl"
+	"clonectl/internal/auth"
+	"clonectl/internal/cluster"
+	"clonectl/internal/config"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
+	"clonectl/internal/scheduler"
+	"clonectl/internal/services"
 )
 
 // App owns the whole server lifecycle (startup order mirrors app/main.py).
@@ -190,7 +190,7 @@ func (a *App) Start() error {
 	// 12. HTTP server.
 	static := DiskStaticFS(cfg.StaticDir) // dev override; embed used when nil
 	if static == nil {
-		static = rclone_sync.EmbeddedStatic() // release embed; nil with placeholder-only dist
+		static = clonectl.EmbeddedStatic() // release embed; nil with placeholder-only dist
 	}
 	deps := &Deps{
 		DB: db, Cfg: cfg, RC: rc, RCProxy: proxy, Sched: sched, Static: static,
@@ -206,7 +206,7 @@ func (a *App) Start() error {
 
 	addr := net.JoinHostPort(cfg.APIHost, strconv.Itoa(cfg.APIPort))
 	a.srv = &http.Server{Addr: addr, Handler: router}
-	slog.Info("rclone-sync serving", "addr", addr,
+	slog.Info("clonectl serving", "addr", addr,
 		"leader", a.Elector != nil && a.Elector.IsLeader(), "node", cfg.NodeID)
 	if err := a.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
@@ -237,5 +237,5 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.Cfg.PIDFile != "" {
 		_ = os.Remove(a.Cfg.PIDFile)
 	}
-	slog.Info("rclone-sync stopped")
+	slog.Info("clonectl stopped")
 }

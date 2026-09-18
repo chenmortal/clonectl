@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // authTransport injects the rclone rcd basic-auth credentials on every

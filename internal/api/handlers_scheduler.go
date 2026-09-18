@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"rclone_sync/internal/scheduler"
+	"clonectl/internal/scheduler"
 )
 
 // Scheduler monitoring API — inspired by go-co-op/gocron-ui, implemented on

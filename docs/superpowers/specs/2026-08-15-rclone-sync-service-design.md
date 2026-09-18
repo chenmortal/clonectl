@@ -28,7 +28,7 @@
 ## 3. 架构
 
 ```
-rclone_sync/
+clonectl/
 ├── pyproject.toml
 ├── .env.example
 ├── app/
@@ -130,7 +130,7 @@ RC 调用统一使用 Basic Auth（`RCLONE_RC_USER` / `RCLONE_RC_PASS`）。
 ## 9. 配置（.env / pydantic-settings）
 
 ```
-DATABASE_URL=sqlite:///./rclone_sync.db
+DATABASE_URL=sqlite:///./clonectl.db
 RCLONE_RC_URL=http://localhost:5572
 RCLONE_RC_USER=admin
 RCLONE_RC_PASS=6051

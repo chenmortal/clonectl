@@ -14,12 +14,12 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 
-	"rclone_sync/internal/api"
-	"rclone_sync/internal/config"
+	"clonectl/internal/api"
+	"clonectl/internal/config"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "rclone-sync",
+	Use:   "clonectl",
 	Short: "rclone periodic sync service",
 }
 
@@ -35,7 +35,7 @@ func init() {
 // into cobra's built-in --version flag.
 func SetVersion(v string) {
 	rootCmd.Version = v
-	rootCmd.SetVersionTemplate("rclone-sync {{.Version}}\n")
+	rootCmd.SetVersionTemplate("clonectl {{.Version}}\n")
 }
 
 // Execute runs the CLI.

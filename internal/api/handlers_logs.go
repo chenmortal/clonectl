@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"rclone_sync/internal/rclone"
+	"clonectl/internal/rclone"
 )
 
 // Tail and download of the managed rcd log (rclone.RcdLogName). The file

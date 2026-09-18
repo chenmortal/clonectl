@@ -1,9 +1,9 @@
-// Package rclone_sync embeds the built React frontend (web/dist) into the
+// Package clonectl embeds the built React frontend (web/dist) into the
 // release binary — single-binary distribution, no Node runtime at deploy.
 // `make all` = npm build then go build. With only the committed .gitkeep
 // placeholder, EmbeddedStatic returns nil and the server stays API-only
 // (or serves STATIC_DIR from disk).
-package rclone_sync
+package clonectl
 
 import (
 	"embed"

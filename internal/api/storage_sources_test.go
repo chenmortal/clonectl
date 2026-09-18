@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // valid s3 create body (provider now lives in extra and is required).

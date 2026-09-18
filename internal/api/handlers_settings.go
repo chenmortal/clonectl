@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/services"
+	"clonectl/internal/database"
+	"clonectl/internal/services"
 )
 
 func toSettingOut(s *database.SystemSetting) gin.H {

@@ -11,10 +11,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/config"
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
-	"rclone_sync/internal/scheduler"
+	"clonectl/internal/config"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
+	"clonectl/internal/scheduler"
 )
 
 // ElectorInfo is the HA leadership view the API needs. Implemented by

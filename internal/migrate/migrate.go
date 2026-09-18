@@ -11,8 +11,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/services"
+	"clonectl/internal/database"
+	"clonectl/internal/services"
 )
 
 // Counts summarizes one Run.

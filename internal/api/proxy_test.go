@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"rclone_sync/internal/rclone"
-	"rclone_sync/internal/rclone/rctest"
+	"clonectl/internal/rclone"
+	"clonectl/internal/rclone/rctest"
 )
 
 func proxyEnv(t *testing.T) (*Deps, *gin.Engine, string, *rctest.Server) {

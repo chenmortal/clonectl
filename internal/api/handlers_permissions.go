@@ -1,7 +1,7 @@
 package api
 
 import (
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // CurrentPermission returns the caller's effective permission on a single

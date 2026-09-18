@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { getSiteInfo } from "@/lib/api";
 
-export const DEFAULT_SITE_TITLE = "rclone-sync";
+export const DEFAULT_SITE_TITLE = "clonectl";
 
 // Module-level store shared by every useSiteTitle() consumer (login page,
 // app shell). Kept outside react-query on purpose: the direct

@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 var storageSourceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)

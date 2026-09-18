@@ -101,7 +101,7 @@ function SiteTitleCard({
         <CardTitle className="text-base">站点标题</CardTitle>
         <CardDescription>
           应用整体名称，显示在侧边栏、登录页与浏览器标签。留空使用默认
-          rclone-sync，最长 100 字符。
+          clonectl，最长 100 字符。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -116,7 +116,7 @@ function SiteTitleCard({
           </div>
           <Input
             id="site-title"
-            placeholder="rclone-sync"
+            placeholder="clonectl"
             value={title}
             maxLength={100}
             onChange={(e) => {

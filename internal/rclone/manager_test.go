@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"rclone_sync/internal/rclone/rctest"
+	"clonectl/internal/rclone/rctest"
 )
 
 // fakeRcloneBin writes an executable that ignores all args and exits with

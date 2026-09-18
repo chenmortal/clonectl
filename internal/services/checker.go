@@ -7,8 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
 )
 
 // ResultKeys picked from the rclone check output into check_runs.result.

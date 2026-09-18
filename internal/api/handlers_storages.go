@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // Legacy /api/storages — GET remains for the deprecation window; writes

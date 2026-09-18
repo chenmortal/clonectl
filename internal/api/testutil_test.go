@@ -11,9 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"rclone_sync/internal/auth"
-	"rclone_sync/internal/config"
-	"rclone_sync/internal/database"
+	"clonectl/internal/auth"
+	"clonectl/internal/config"
+	"clonectl/internal/database"
 )
 
 // newTestEnv builds an isolated DB + router. Bcrypt cost is minimized for speed.

@@ -3,7 +3,7 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // NewRouter assembles the full route table. Route registration order matters:

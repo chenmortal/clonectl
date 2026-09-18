@@ -1,10 +1,10 @@
-// rclone-sync: periodic object-storage sync service backed by rclone rcd.
+// clonectl: multi-tool sync & verify control plane (rclone rcd, redis-shake-agent, ...).
 package main
 
 import (
 	"fmt"
 
-	"rclone_sync/internal/cli"
+	"clonectl/internal/cli"
 )
 
 // Overridden at release build time via -ldflags -X.

@@ -2,7 +2,7 @@
 > REST 契约保持兼容（路径/字段/状态码/错误体）；差异：新增
 > `/api/scheduler/*` 调度监控端点，未知 `/api/*` 路径返回 JSON 404。
 
-# rclone-sync 对外 API 文档
+# clonectl 对外 API 文档
 
 版本：0.1.0 · Base URL：`http://<host>:8000` · Content-Type：`application/json` · 字符集：UTF-8
 
@@ -494,7 +494,7 @@ curl "http://localhost:8000/api/runs?task_id=1&status=failed&limit=20"
 { "site_title": "我的同步台" }
 ```
 
-未设置时 `site_title` 为空串，前端回退默认 `rclone-sync`。标题通过系统设置
+未设置时 `site_title` 为空串，前端回退默认 `clonectl`。标题通过系统设置
 `PUT /api/system-settings/site_title`（admin）修改：自动去除首尾空白，最长
 100 字符（按 Unicode 字符计），留空恢复默认。
 

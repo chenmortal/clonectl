@@ -3,7 +3,7 @@ package migrate
 import (
 	"time"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // Legacy-schema read models (column-for-column with the Python tables;

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // legacySchema creates Python-shaped legacy tables in SQLite.

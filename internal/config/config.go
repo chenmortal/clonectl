@@ -53,7 +53,7 @@ type Settings struct {
 func Load() Settings {
 	_ = godotenv.Load() // missing .env is fine
 	return Settings{
-		DatabaseURL: envStr("DATABASE_URL", "sqlite:///./rclone_sync.db"),
+		DatabaseURL: envStr("DATABASE_URL", "sqlite:///./clonectl.db"),
 
 		RcloneRCUser:  envStr("RCLONE_RC_USER", "admin"),
 		RcloneRCPass:  envStr("RCLONE_RC_PASS", "6051"),
@@ -65,7 +65,7 @@ func Load() Settings {
 		CheckTimeout:  envInt("CHECK_TIMEOUT_SECONDS", 3600),
 		APIHost:       envStr("API_HOST", "0.0.0.0"),
 		APIPort:       envInt("API_PORT", 8000),
-		PIDFile:       envStr("PID_FILE", "rclone-sync.pid"),
+		PIDFile:       envStr("PID_FILE", "clonectl.pid"),
 		LogLevel:      envStr("LOG_LEVEL", "INFO"),
 		StaticDir:     envStr("STATIC_DIR", "web/dist"),
 

@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // toSyncTaskBindingOut and toCheckTaskBindingOut are the shared DTOs.

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/config"
-	"rclone_sync/internal/database"
+	"clonectl/internal/config"
+	"clonectl/internal/database"
 )
 
 func schedDB(t *testing.T) *gorm.DB {

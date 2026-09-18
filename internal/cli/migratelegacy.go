@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"rclone_sync/internal/config"
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/migrate"
+	"clonectl/internal/config"
+	"clonectl/internal/database"
+	"clonectl/internal/migrate"
 )
 
 var migrateLegacyCmd = &cobra.Command{

@@ -7,7 +7,7 @@ import type { LogTail, SiteInfo } from "@/lib/types";
  * Error shape: FastAPI bodies {"detail": string | [{loc,msg,type}]}.
  */
 
-const TOKEN_KEY = "rclone-sync.token";
+const TOKEN_KEY = "clonectl.token";
 
 export const getAuthToken = (): string | null => localStorage.getItem(TOKEN_KEY);
 

@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/scheduler"
-	"rclone_sync/internal/services"
+	"clonectl/internal/database"
+	"clonectl/internal/scheduler"
+	"clonectl/internal/services"
 )
 
 // --- DTOs (JSON field names = FastAPI contract; *_storage_id always null in

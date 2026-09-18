@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/services"
+	"clonectl/internal/database"
+	"clonectl/internal/services"
 )
 
 func toCheckTaskOut(t *database.CheckTask, currentPerm string) gin.H {

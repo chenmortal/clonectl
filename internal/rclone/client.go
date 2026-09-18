@@ -297,14 +297,14 @@ func (c *Client) List(remote string) ([]map[string]any, error) {
 //   - (true, warning)   write succeeded, cleanup failed (stray file left)
 func (c *Client) WriteProbe(remote string) (bool, string) {
 	name := fmt.Sprintf(".rclone_sync_probe_%d", time.Now().UnixMilli())
-	tmp, err := os.CreateTemp("", "rclone-sync-probe-")
+	tmp, err := os.CreateTemp("", "clonectl-probe-")
 	if err != nil {
 		return false, err.Error()
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
 
-	if _, err := tmp.WriteString("rclone-sync verify probe\n"); err != nil {
+	if _, err := tmp.WriteString("clonectl verify probe\n"); err != nil {
 		tmp.Close()
 		return false, err.Error()
 	}

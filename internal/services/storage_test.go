@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // s3 remotes default to the classic ListObjects: old OSS builds reject

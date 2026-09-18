@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
-	"rclone_sync/internal/rclone/rctest"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
+	"clonectl/internal/rclone/rctest"
 )
 
 // checkEnv: DB + fake rcd + one task (shares the shape of runnerEnv).

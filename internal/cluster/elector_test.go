@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 func newElectorDB(t *testing.T) *gorm.DB {

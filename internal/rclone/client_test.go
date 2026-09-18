@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"rclone_sync/internal/rclone/rctest"
+	"clonectl/internal/rclone/rctest"
 )
 
 func newTestClient(t *testing.T, srv *rctest.Server) *Client {

@@ -6,8 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/config"
-	"rclone_sync/internal/database"
+	"clonectl/internal/config"
+	"clonectl/internal/database"
 )
 
 // BootstrapAdmin creates the bootstrap admin iff the users table is empty

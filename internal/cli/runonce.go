@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"rclone_sync/internal/config"
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
-	"rclone_sync/internal/services"
+	"clonectl/internal/config"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
+	"clonectl/internal/services"
 )
 
 var runOnceCmd = &cobra.Command{

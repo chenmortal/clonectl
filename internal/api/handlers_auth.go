@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"rclone_sync/internal/auth"
-	"rclone_sync/internal/database"
+	"clonectl/internal/auth"
+	"clonectl/internal/database"
 )
 
 type loginIn struct {

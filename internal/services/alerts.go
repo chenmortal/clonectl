@@ -10,7 +10,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
+	"clonectl/internal/database"
 )
 
 // Alertmanager v4 webhook integration (port of app/services/alerts.py).
@@ -50,7 +50,7 @@ func BuildAlertmanagerPayload(taskID int64, taskName string, runID int64, errorT
 	commonLabels := map[string]string{
 		"alertname": alertname,
 		"severity":  "critical",
-		"service":   "rclone-sync",
+		"service":   "clonectl",
 		"task_id":   fmt.Sprintf("%d", taskID),
 		"task_name": taskName,
 		"task_kind": kind,
@@ -87,7 +87,7 @@ func BuildAlertmanagerPayload(taskID int64, taskName string, runID int64, errorT
 		"version":           "4",
 		"groupKey":          fmt.Sprintf("{run.%s}.%d", kind, taskID),
 		"status":            status,
-		"receiver":          "rclone-sync",
+		"receiver":          "clonectl",
 		"groupLabels":       map[string]any{"alertname": alertname, "task_id": fmt.Sprintf("%d", taskID)},
 		"commonLabels":      commonLabels,
 		"commonAnnotations": annotations,

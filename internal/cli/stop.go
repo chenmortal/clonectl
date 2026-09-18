@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"rclone_sync/internal/rclone"
+	"clonectl/internal/rclone"
 )
 
 var stopCmd = &cobra.Command{
@@ -19,7 +19,7 @@ var stopCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		stopPIDFile(cfg.PIDFile, "rclone-sync service", 15*time.Second)
+		stopPIDFile(cfg.PIDFile, "clonectl service", 15*time.Second)
 		stopPIDFile("rcd.pid", "rclone rcd", 10*time.Second)
 		return nil
 	},

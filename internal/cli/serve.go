@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"rclone_sync/internal/api"
+	"clonectl/internal/api"
 )
 
 var bindAddr string

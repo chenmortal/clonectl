@@ -1,5 +1,5 @@
 # ───────── Go ─────────
-/rclone-sync
+/clonectl
 # Build / cache
 *.db
 *.db-shm

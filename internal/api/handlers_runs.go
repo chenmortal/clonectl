@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"rclone_sync/internal/database"
-	"rclone_sync/internal/rclone"
+	"clonectl/internal/database"
+	"clonectl/internal/rclone"
 )
 
 // runListPage is the paginated response shape used by /api/runs and /api/checks.
