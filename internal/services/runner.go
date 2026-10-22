@@ -79,8 +79,10 @@ func resolveSide(db *gorm.DB, client *rclone.Client, dsID int64, path string) (s
 
 // RunTask executes one sync task: concurrency guard → run row (pending) →
 // remote push → optional blocking pre-check → async sync submission.
+// nodeID marks the run as owned by this node — rclone job ids are local to
+// one rcd, so only the submitting node may poll this job later.
 // Returns the final run row (failed/running/skipped).
-func RunTask(db *gorm.DB, client *rclone.Client, cfgTimeout int, taskID int64, trigger string) (*database.SyncRun, error) {
+func RunTask(db *gorm.DB, client *rclone.Client, nodeID string, cfgTimeout int, taskID int64, trigger string) (*database.SyncRun, error) {
 	var task database.SyncTask
 	if err := db.First(&task, taskID).Error; err != nil {
 		return nil, fmt.Errorf("task %d not found", taskID)
@@ -93,7 +95,7 @@ func RunTask(db *gorm.DB, client *rclone.Client, cfgTimeout int, taskID int64, t
 	if err == nil {
 		now := database.NowUTC()
 		run := &database.SyncRun{
-			TaskID: taskID, Status: database.RunSkipped, Trigger: trigger,
+			TaskID: taskID, NodeID: nodeID, Status: database.RunSkipped, Trigger: trigger,
 			StartedAt: &now, FinishedAt: &now,
 			Error: strPtr("previous run still running"),
 		}
@@ -105,7 +107,7 @@ func RunTask(db *gorm.DB, client *rclone.Client, cfgTimeout int, taskID int64, t
 		return nil, err
 	}
 
-	run := &database.SyncRun{TaskID: taskID, Status: database.RunPending, Trigger: trigger}
+	run := &database.SyncRun{TaskID: taskID, NodeID: nodeID, Status: database.RunPending, Trigger: trigger}
 	if err := db.Create(run).Error; err != nil {
 		return nil, err
 	}
@@ -113,7 +115,7 @@ func RunTask(db *gorm.DB, client *rclone.Client, cfgTimeout int, taskID int64, t
 	srcFs, dstFs, err := ResolveRefs(db, client, &task)
 	if err == nil && task.PreCheckTaskID != nil {
 		var proceed bool
-		proceed, err = runPreCheck(db, client, cfgTimeout, &task, run, *task.PreCheckTaskID, trigger)
+		proceed, err = runPreCheck(db, client, nodeID, cfgTimeout, &task, run, *task.PreCheckTaskID, trigger)
 		if err == nil && !proceed {
 			// Run finalized by the pre-check (skipped): stop here.
 			return run, nil
@@ -154,9 +156,9 @@ func RunTask(db *gorm.DB, client *rclone.Client, cfgTimeout int, taskID int64, t
 //   - consistent      → run finalized as skipped(pass msg),  proceed=false
 //   - differences     → run untouched,                        proceed=true
 //   - error / timeout → run finalized as skipped(blocked msg), proceed=false
-func runPreCheck(db *gorm.DB, client *rclone.Client, cfgTimeout int, task *database.SyncTask,
+func runPreCheck(db *gorm.DB, client *rclone.Client, nodeID string, cfgTimeout int, task *database.SyncTask,
 	run *database.SyncRun, preCheckTaskID int64, trigger string) (bool, error) {
-	started, err := RunCheck(db, client, preCheckTaskID, trigger)
+	started, err := RunCheck(db, client, nodeID, preCheckTaskID, trigger)
 	if err != nil {
 		return false, err
 	}
@@ -202,6 +204,17 @@ func runPreCheck(db *gorm.DB, client *rclone.Client, cfgTimeout int, task *datab
 	return false, db.Save(run).Error
 }
 
+// isTransientRCError reports whether a job-status query failure is worth
+// retrying — the request never reached the rcd (StatusCode 0) or the rcd
+// itself is unhealthy (5xx) — instead of proof the job failed.
+func isTransientRCError(err error) bool {
+	var apiErr *rclone.APIError
+	if !errors.As(err, &apiErr) {
+		return true
+	}
+	return apiErr.StatusCode == 0 || apiErr.StatusCode >= 500
+}
+
 // PollRun polls one running run and updates it when the rclone job finished.
 func PollRun(db *gorm.DB, client *rclone.Client, runID int64) (*database.SyncRun, error) {
 	run := &database.SyncRun{}
@@ -214,6 +227,11 @@ func PollRun(db *gorm.DB, client *rclone.Client, runID int64) (*database.SyncRun
 
 	status, err := client.JobStatus(*run.JobID)
 	if err != nil {
+		if isTransientRCError(err) {
+			slog.Warn("poll_run: rclone status query failed; will retry next poll",
+				"run", run.ID, "err", err)
+			return run, nil
+		}
 		now := database.NowUTC()
 		run.Status = database.RunFailed
 		run.FinishedAt = &now
@@ -280,10 +298,19 @@ func PollRun(db *gorm.DB, client *rclone.Client, runID int64) (*database.SyncRun
 	return run, nil
 }
 
-// PollRunningRuns advances every running sync run (scheduler poll job body).
-func PollRunningRuns(db *gorm.DB, client *rclone.Client) {
+// PollRunningRuns advances every running sync run owned by this node
+// (scheduler poll job body). Runs submitted by other nodes are skipped —
+// their rclone job lives in another rcd and would answer "job not found".
+// Legacy rows without an owner are claimed here so exactly one node polls
+// them (the first poller's UPDATE wins; later pollers see node_id set).
+func PollRunningRuns(db *gorm.DB, client *rclone.Client, nodeID string) {
+	if err := db.Model(&database.SyncRun{}).
+		Where("status = ? AND (node_id = '' OR node_id IS NULL)", database.RunRunning).
+		Update("node_id", nodeID).Error; err != nil {
+		slog.Error("poll_running_runs: claim unowned runs failed", "err", err)
+	}
 	var runs []database.SyncRun
-	if err := db.Where("status = ?", database.RunRunning).Find(&runs).Error; err != nil {
+	if err := db.Where("status = ? AND node_id = ?", database.RunRunning, nodeID).Find(&runs).Error; err != nil {
 		slog.Error("poll_running_runs: list failed", "err", err)
 		return
 	}

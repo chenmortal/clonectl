@@ -139,10 +139,12 @@ func (a *App) Start() error {
 		slog.Info("sync_all_remotes", "synced", synced, "failed", failed)
 	}
 
-	// 9. Scheduler (leader-gated user jobs).
-	sched, err := scheduler.New(db, rc, cfg,
+	// 9. Scheduler (leader-gated user jobs). nodeID scopes run polling to
+	// jobs submitted by this node — rclone job ids live in per-node rcds.
+	nodeID := cluster.EffectiveNodeID(cfg.NodeID)
+	sched, err := scheduler.New(db, rc, cfg, nodeID,
 		func(taskID int64) *int64 {
-			run, err := services.RunTask(db, rc, cfg.CheckTimeout, taskID, database.TriggerSchedule)
+			run, err := services.RunTask(db, rc, nodeID, cfg.CheckTimeout, taskID, database.TriggerSchedule)
 			if err != nil {
 				slog.Error("scheduled task failed", "id", taskID, "err", err)
 				return nil
@@ -150,7 +152,7 @@ func (a *App) Start() error {
 			return &run.ID
 		},
 		func(checkID int64) *int64 {
-			check, err := services.RunCheck(db, rc, checkID, database.TriggerSchedule)
+			check, err := services.RunCheck(db, rc, nodeID, checkID, database.TriggerSchedule)
 			if err != nil {
 				slog.Error("scheduled check failed", "id", checkID, "err", err)
 				return nil
@@ -164,7 +166,7 @@ func (a *App) Start() error {
 
 	// 10. Leader elector + wiring (HA off when NODE_ID/CLUSTER unset? no —
 	// elector is always built; single node just always wins the lease).
-	elector := cluster.New(db, cfg.NodeID, cfg.ClusterName,
+	elector := cluster.New(db, nodeID, cfg.ClusterName,
 		time.Duration(cfg.HeartbeatInterval)*time.Second,
 		time.Duration(cfg.LeaseDuration)*time.Second)
 	elector.OnAcquired = func() { sched.SetLeader(true) }
@@ -194,6 +196,7 @@ func (a *App) Start() error {
 	}
 	deps := &Deps{
 		DB: db, Cfg: cfg, RC: rc, RCProxy: proxy, Sched: sched, Static: static,
+		NodeID: nodeID,
 		Elector: func() ElectorInfo {
 			if a.Elector == nil {
 				return nil

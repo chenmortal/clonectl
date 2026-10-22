@@ -33,6 +33,7 @@ type Service struct {
 	db        *gorm.DB
 	rc        *rclone.Client
 	cfg       config.Settings
+	nodeID    string // this node's id: scopes run-poll jobs to owned runs
 	mon       *Monitor
 	execTask  TaskExec
 	execCheck CheckExec
@@ -46,8 +47,10 @@ type Service struct {
 	schedulerStarted bool
 }
 
-// New builds the service (not yet started). rc drives the run-poll jobs.
-func New(db *gorm.DB, rc *rclone.Client, cfg config.Settings, execTask TaskExec, execCheck CheckExec) (*Service, error) {
+// New builds the service (not yet started). rc drives the run-poll jobs;
+// nodeID scopes those polls to runs submitted by this node (rclone job ids
+// live in per-node rcds and collide across nodes).
+func New(db *gorm.DB, rc *rclone.Client, cfg config.Settings, nodeID string, execTask TaskExec, execCheck CheckExec) (*Service, error) {
 	mon := NewMonitor()
 	sched, err := gocron.NewScheduler(
 		gocron.WithLocation(time.UTC),
@@ -68,6 +71,7 @@ func New(db *gorm.DB, rc *rclone.Client, cfg config.Settings, execTask TaskExec,
 		db:        db,
 		rc:        rc,
 		cfg:       cfg,
+		nodeID:    nodeID,
 		mon:       mon,
 		execTask:  execTask,
 		execCheck: execCheck,
@@ -292,13 +296,13 @@ func (s *Service) removeUserJobs() {
 func (s *Service) Start() error {
 	if _, err := s.newJob("poll-running-runs", []string{"internal", "poll"},
 		gocron.DurationJob(time.Duration(s.cfg.PollInterval)*time.Second),
-		func() { pollRunningRuns(s.db, s.rc) }); err != nil {
+		func() { pollRunningRuns(s.db, s.rc, s.nodeID) }); err != nil {
 		return err
 	}
 	s.setSchedule("poll-running-runs", fmt.Sprintf("every %ds", s.cfg.PollInterval))
 	if _, err := s.newJob("poll-running-checks", []string{"internal", "poll"},
 		gocron.DurationJob(time.Duration(s.cfg.PollInterval)*time.Second),
-		func() { pollRunningChecks(s.db, s.rc) }); err != nil {
+		func() { pollRunningChecks(s.db, s.rc, s.nodeID) }); err != nil {
 		return err
 	}
 	s.setSchedule("poll-running-checks", fmt.Sprintf("every %ds", s.cfg.PollInterval))
@@ -331,9 +335,14 @@ func (s *Service) Shutdown() error {
 	return s.sched.Shutdown()
 }
 
-// Poll wiring — the poll jobs call into the services package.
-func pollRunningRuns(db *gorm.DB, rc *rclone.Client)   { services.PollRunningRuns(db, rc) }
-func pollRunningChecks(db *gorm.DB, rc *rclone.Client) { services.PollRunningChecks(db, rc) }
+// Poll wiring — the poll jobs call into the services package, scoped to
+// runs this node submitted.
+func pollRunningRuns(db *gorm.DB, rc *rclone.Client, nodeID string) {
+	services.PollRunningRuns(db, rc, nodeID)
+}
+func pollRunningChecks(db *gorm.DB, rc *rclone.Client, nodeID string) {
+	services.PollRunningChecks(db, rc, nodeID)
+}
 
 // --- monitor views ---
 

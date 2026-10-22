@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"rclone_sync/internal/cluster"
 	"rclone_sync/internal/config"
 	"rclone_sync/internal/database"
 	"rclone_sync/internal/rclone"
@@ -43,7 +44,7 @@ var runOnceCmd = &cobra.Command{
 		client := rclone.NewClient(rclone.RCNormal(cfg.RcloneRCAddr), cfg.RcloneRCUser, cfg.RcloneRCPass, 30*time.Second)
 		defer client.Close()
 
-		run, err := services.RunTask(db, client, cfg.CheckTimeout, taskID, "manual")
+		run, err := services.RunTask(db, client, cluster.EffectiveNodeID(cfg.NodeID), cfg.CheckTimeout, taskID, "manual")
 		if err != nil {
 			return err
 		}

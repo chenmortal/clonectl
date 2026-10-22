@@ -64,7 +64,7 @@ func checkOutput(success bool, differ, missingSrc, missingDst, errs int) map[str
 func TestRunCheckSuccess(t *testing.T) {
 	db, client, srv, task := checkEnv(t)
 
-	check, err := RunCheck(db, client, task.ID, database.TriggerManual)
+	check, err := RunCheck(db, client, "nodeA", task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	assert.Equal(t, database.RunRunning, check.Status)
 	require.NotNil(t, check.JobID)
@@ -92,7 +92,7 @@ func TestRunCheckSuccess(t *testing.T) {
 
 func TestRunCheckDifferencesFail(t *testing.T) {
 	db, client, srv, task := checkEnv(t)
-	check, err := RunCheck(db, client, task.ID, database.TriggerManual)
+	check, err := RunCheck(db, client, "nodeA", task.ID, database.TriggerManual)
 	require.NoError(t, err)
 
 	status := rctest.FinishedSuccess(*check.JobID)
@@ -108,7 +108,7 @@ func TestRunCheckDifferencesFail(t *testing.T) {
 
 func TestRunCheckJobFailure(t *testing.T) {
 	db, client, srv, task := checkEnv(t)
-	check, err := RunCheck(db, client, task.ID, database.TriggerManual)
+	check, err := RunCheck(db, client, "nodeA", task.ID, database.TriggerManual)
 	require.NoError(t, err)
 
 	srv.QueueJobStatus(*check.JobID, rctest.FinishedError(*check.JobID, "no such bucket"))
@@ -122,15 +122,35 @@ func TestRunCheckStartFailure(t *testing.T) {
 	db, client, srv, task := checkEnv(t)
 	srv.FailNext("/operations/check", 500, map[string]any{"error": "denied"})
 
-	check, err := RunCheck(db, client, task.ID, database.TriggerManual)
+	check, err := RunCheck(db, client, "nodeA", task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	assert.Equal(t, database.RunFailed, check.Status)
 	assert.Contains(t, *check.Error, "denied")
 }
 
+// TestPollRunningChecksSkipsOtherNodes: mirror of the sync-run ownership
+// rule for check runs — the standby never polls another node's check job.
+func TestPollRunningChecksSkipsOtherNodes(t *testing.T) {
+	db, client, srv, task := checkEnv(t)
+	check, err := RunCheck(db, client, "nodeA", task.ID, database.TriggerManual)
+	require.NoError(t, err)
+	status := rctest.FinishedSuccess(*check.JobID)
+	status["output"] = checkOutput(true, 0, 0, 0, 0)
+	srv.QueueJobStatus(*check.JobID, status)
+
+	PollRunningChecks(db, client, "nodeB")
+	var after database.CheckRun
+	require.NoError(t, db.First(&after, check.ID).Error)
+	assert.Equal(t, database.RunRunning, after.Status, "other nodes never touch this check")
+
+	PollRunningChecks(db, client, "nodeA")
+	require.NoError(t, db.First(&after, check.ID).Error)
+	assert.Equal(t, database.RunSuccess, after.Status)
+}
+
 func TestWaitForCheckTimeout(t *testing.T) {
 	db, client, _, task := checkEnv(t)
-	check, err := RunCheck(db, client, task.ID, database.TriggerManual)
+	check, err := RunCheck(db, client, "nodeA", task.ID, database.TriggerManual)
 	require.NoError(t, err)
 
 	// Timeout of 0s fires immediately; job still running → marked failed.
@@ -163,7 +183,7 @@ func TestPreCheckFlowSkipProceedBlock(t *testing.T) {
 	okStatus := rctest.FinishedSuccess(0)
 	okStatus["output"] = checkOutput(true, 0, 0, 0, 0)
 	srv.SetDefaultJobStatus(okStatus)
-	run, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	run, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	assert.Equal(t, database.RunSkipped, run.Status)
 	assert.Contains(t, *run.Error, "同步前一致性检查通过")
@@ -173,7 +193,7 @@ func TestPreCheckFlowSkipProceedBlock(t *testing.T) {
 	diffStatus := rctest.FinishedSuccess(0)
 	diffStatus["output"] = checkOutput(false, 5, 0, 0, 0)
 	srv.SetDefaultJobStatus(diffStatus)
-	run2, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	run2, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	assert.Equal(t, database.RunRunning, run2.Status, "differences → proceed")
 
@@ -184,7 +204,7 @@ func TestPreCheckFlowSkipProceedBlock(t *testing.T) {
 
 	// Case 3: check error → blocked.
 	srv.SetDefaultJobStatus(rctest.FinishedError(0, "boom"))
-	run3, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	run3, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	assert.Equal(t, database.RunSkipped, run3.Status)
 	assert.Contains(t, *run3.Error, "同步前一致性检查出错")

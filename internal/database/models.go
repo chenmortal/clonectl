@@ -137,9 +137,9 @@ type SyncTask struct {
 	// inserted for the creator at create time and may be revoked).
 	// default:0 keeps SQLite's ALTER TABLE ADD NOT NULL happy for pre-existing
 	// rows in dev DBs; the value is purely informational.
-	CreatorUserID  int64     `gorm:"not null;default:0;index" json:"creator_user_id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	CreatorUserID int64     `gorm:"not null;default:0;index" json:"creator_user_id"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 func (SyncTask) TableName() string { return "sync_tasks_v2" }
@@ -163,7 +163,7 @@ type CheckTask struct {
 	Name            string     `gorm:"size:128;not null" json:"name"`
 	SrcDataSourceID int64      `gorm:"not null;index" json:"src_data_source_id"`
 	SrcPath         string     `gorm:"size:512;not null" json:"src_path"`
-	DstDataSourceID int64      `gorm:"not null;index" json="dst_data_source_id"`
+	DstDataSourceID int64      `gorm:"not null;index" json:"dst_data_source_id"`
 	DstPath         string     `gorm:"size:512;not null" json:"dst_path"`
 	Cron            *string    `gorm:"size:128" json:"cron"`
 	Enabled         bool       `gorm:"not null" json:"enabled"`
@@ -194,9 +194,14 @@ func (CheckTaskBinding) TableName() string { return "check_task_bindings_v2" }
 // --- runs ---
 
 type SyncRun struct {
-	ID         int64       `gorm:"primaryKey;autoIncrement" json:"id"`
-	TaskID     int64       `gorm:"not null;index:idx_sync_runs_task_status,priority:1" json:"task_id"`
-	JobID      *int64      `json:"job_id"`
+	ID     int64  `gorm:"primaryKey;autoIncrement" json:"id"`
+	TaskID int64  `gorm:"not null;index:idx_sync_runs_task_status,priority:1" json:"task_id"`
+	JobID  *int64 `json:"job_id"`
+	// NodeID is the cluster node that submitted the rclone job. rclone job
+	// ids are per-rcd local counters, so only the submitting node can poll
+	// this job's status. "" = row predates node attribution (legacy); the
+	// poller claims such rows on first sight.
+	NodeID     string      `gorm:"size:64;index" json:"node_id"`
 	Status     string      `gorm:"size:16;not null;default:pending;index:idx_sync_runs_task_status,priority:2;index" json:"status"`
 	Trigger    string      `gorm:"size:16;not null" json:"trigger"`
 	StartedAt  *time.Time  `json:"started_at"`
@@ -209,9 +214,11 @@ type SyncRun struct {
 func (SyncRun) TableName() string { return "sync_runs_v2" }
 
 type CheckRun struct {
-	ID         int64       `gorm:"primaryKey;autoIncrement" json:"id"`
-	TaskID     int64       `gorm:"not null;index:idx_check_runs_task_status,priority:1" json:"task_id"`
-	JobID      *int64      `json:"job_id"`
+	ID     int64  `gorm:"primaryKey;autoIncrement" json:"id"`
+	TaskID int64  `gorm:"not null;index:idx_check_runs_task_status,priority:1" json:"task_id"`
+	JobID  *int64 `json:"job_id"`
+	// NodeID mirrors SyncRun.NodeID: the node that submitted this check job.
+	NodeID     string      `gorm:"size:64;index" json:"node_id"`
 	Status     string      `gorm:"size:16;not null;default:pending;index:idx_check_runs_task_status,priority:2;index" json:"status"`
 	Trigger    string      `gorm:"size:16;not null" json:"trigger"`
 	StartedAt  *time.Time  `json:"started_at"`

@@ -39,7 +39,7 @@ func schedEnv(t *testing.T) (*Deps, *gin.Engine, string) {
 	cfg := d.Cfg
 	cfg.PollInterval = 10
 	cfg.HeartbeatInterval = 3
-	s, err := scheduler.New(d.DB, nil, cfg,
+	s, err := scheduler.New(d.DB, nil, cfg, "node-test",
 		func(id int64) *int64 { return nil },
 		func(id int64) *int64 { return nil })
 	require.NoError(t, err)
@@ -145,7 +145,7 @@ func TestSchedulerRunNowExecutesService(t *testing.T) {
 
 	cfg := d.Cfg
 	cfg.PollInterval = 10
-	s, err := scheduler.New(d.DB, nil, cfg,
+	s, err := scheduler.New(d.DB, nil, cfg, "node-test",
 		func(id int64) *int64 { ranID = &id; return nil },
 		func(id int64) *int64 { return nil })
 	require.NoError(t, err)

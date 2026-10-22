@@ -18,7 +18,7 @@ func toCheckTaskOut(t *database.CheckTask, currentPerm string) gin.H {
 		"src_storage_id": nil, "dst_storage_id": nil,
 		"src_path": t.SrcPath, "dst_path": t.DstPath,
 		"cron": strNil(t.Cron), "enabled": t.Enabled,
-		"check_options": t.CheckOptions,
+		"check_options":   t.CheckOptions,
 		"creator_user_id": t.CreatorUserID,
 		"created_at":      NaiveUTC(t.CreatedAt), "updated_at": NaiveUTC(t.UpdatedAt),
 		"current_user_permission": currentPerm,
@@ -280,7 +280,7 @@ func (d *Deps) TriggerCheckTask(c *gin.Context) {
 		AbortDetail(c, http.StatusServiceUnavailable, "rclone client not available")
 		return
 	}
-	check, err := services.RunCheck(d.DB, d.RC, task.ID, database.TriggerManual)
+	check, err := services.RunCheck(d.DB, d.RC, d.NodeID, task.ID, database.TriggerManual)
 	if err != nil {
 		if fmt.Sprintf("%v", err) == fmt.Sprintf("check task %d not found", task.ID) {
 			AbortDetail(c, http.StatusNotFound, "check task not found")

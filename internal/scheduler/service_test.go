@@ -25,7 +25,7 @@ func schedDB(t *testing.T) *gorm.DB {
 func newTestService(t *testing.T, db *gorm.DB) (*Service, *[]int64, *[]int64) {
 	t.Helper()
 	var tasks, checks []int64
-	s, err := New(db, nil, config.Settings{PollInterval: 10, HeartbeatInterval: 3},
+	s, err := New(db, nil, config.Settings{PollInterval: 10, HeartbeatInterval: 3}, "node-test",
 		func(id int64) *int64 { tasks = append(tasks, id); return nil },
 		func(id int64) *int64 { checks = append(checks, id); return nil })
 	require.NoError(t, err)

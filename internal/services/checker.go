@@ -18,14 +18,15 @@ var ResultKeys = []string{
 }
 
 // RunCheck executes one consistency check (no concurrency guard, no
-// pre-check — parity with Python).
-func RunCheck(db *gorm.DB, client *rclone.Client, checkTaskID int64, trigger string) (*database.CheckRun, error) {
+// pre-check — parity with Python). nodeID marks the check run as owned by
+// this node (rclone job ids are per-rcd, see SyncRun.NodeID).
+func RunCheck(db *gorm.DB, client *rclone.Client, nodeID string, checkTaskID int64, trigger string) (*database.CheckRun, error) {
 	var task database.CheckTask
 	if err := db.First(&task, checkTaskID).Error; err != nil {
 		return nil, fmt.Errorf("check task %d not found", checkTaskID)
 	}
 
-	check := &database.CheckRun{TaskID: task.ID, Status: database.RunPending, Trigger: trigger}
+	check := &database.CheckRun{TaskID: task.ID, NodeID: nodeID, Status: database.RunPending, Trigger: trigger}
 	if err := db.Create(check).Error; err != nil {
 		return nil, err
 	}
@@ -77,6 +78,11 @@ func PollCheck(db *gorm.DB, client *rclone.Client, checkID int64) (*database.Che
 
 	status, err := client.JobStatus(*check.JobID)
 	if err != nil {
+		if isTransientRCError(err) {
+			slog.Warn("poll_check: rclone status query failed; will retry next poll",
+				"check", check.ID, "err", err)
+			return check, nil
+		}
 		now := database.NowUTC()
 		check.Status = database.RunFailed
 		check.FinishedAt = &now
@@ -149,10 +155,16 @@ func countList(v any) int {
 	return 0
 }
 
-// PollRunningChecks advances every running check run.
-func PollRunningChecks(db *gorm.DB, client *rclone.Client) {
+// PollRunningChecks advances every running check run owned by this node;
+// see PollRunningRuns for the ownership/claim rules.
+func PollRunningChecks(db *gorm.DB, client *rclone.Client, nodeID string) {
+	if err := db.Model(&database.CheckRun{}).
+		Where("status = ? AND (node_id = '' OR node_id IS NULL)", database.RunRunning).
+		Update("node_id", nodeID).Error; err != nil {
+		slog.Error("poll_running_checks: claim unowned checks failed", "err", err)
+	}
 	var checks []database.CheckRun
-	if err := db.Where("status = ?", database.RunRunning).Find(&checks).Error; err != nil {
+	if err := db.Where("status = ? AND node_id = ?", database.RunRunning, nodeID).Find(&checks).Error; err != nil {
 		slog.Error("poll_running_checks: list failed", "err", err)
 		return
 	}

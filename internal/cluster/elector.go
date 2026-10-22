@@ -32,12 +32,20 @@ type LeaderElector struct {
 	leaderID *string
 }
 
+// EffectiveNodeID resolves the configured node id, falling back to
+// "<hostname>-<pid>" when empty. Exported so run submission and polling
+// agree on the same identity the elector runs under.
+func EffectiveNodeID(nodeID string) string {
+	if nodeID != "" {
+		return nodeID
+	}
+	host, _ := os.Hostname()
+	return host + "-" + itoa(os.Getpid())
+}
+
 // New builds an elector. Empty nodeID falls back to "<hostname>-<pid>".
 func New(db *gorm.DB, nodeID, clusterName string, heartbeat, lease time.Duration) *LeaderElector {
-	if nodeID == "" {
-		host, _ := os.Hostname()
-		nodeID = host + "-" + itoa(os.Getpid())
-	}
+	nodeID = EffectiveNodeID(nodeID)
 	if clusterName == "" {
 		clusterName = "default"
 	}

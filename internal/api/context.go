@@ -36,6 +36,10 @@ type Deps struct {
 	RCProxy *httputil.ReverseProxy
 	Sched   *scheduler.Service
 	Static  http.FileSystem
+	// NodeID is this process's cluster identity (cluster.EffectiveNodeID).
+	// Run rows carry the submitting node so live lookups never query an rcd
+	// that cannot know the job.
+	NodeID  string
 	Elector func() ElectorInfo
 }
 

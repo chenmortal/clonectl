@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -38,6 +39,21 @@ func (d *Deps) ListSchedulerJobs(c *gin.Context) {
 	})
 }
 
+// jobNotFoundDetail explains a missing job id. On a standby node the user
+// jobs are not registered here at all (registration is leader-gated), so
+// say where they live instead of a bare "job not found".
+func (d *Deps) jobNotFoundDetail(jobID string) string {
+	if e := d.GetElector(); e != nil && !e.IsLeader() {
+		leaderID, _ := e.Identity()
+		if leaderID == "" {
+			leaderID = "unknown"
+		}
+		return fmt.Sprintf("job %q not found on this node (standby %s); scheduler jobs are registered on the leader node %q",
+			jobID, d.NodeID, leaderID)
+	}
+	return "job not found"
+}
+
 // GetSchedulerJob → single job with upcoming-runs preview + execution ring.
 func (d *Deps) GetSchedulerJob(c *gin.Context) {
 	if d.Sched == nil {
@@ -46,7 +62,7 @@ func (d *Deps) GetSchedulerJob(c *gin.Context) {
 	}
 	j, ok := d.Sched.JobByID(c.Param("job_id"))
 	if !ok {
-		AbortDetail(c, http.StatusNotFound, "job not found")
+		AbortDetail(c, http.StatusNotFound, d.jobNotFoundDetail(c.Param("job_id")))
 		return
 	}
 	body := schedJobJSON(j)
@@ -68,7 +84,7 @@ func (d *Deps) RunSchedulerJob(c *gin.Context) {
 	}
 	kind, resultID, ok := d.Sched.RunUserJobNow(c.Param("job_id"))
 	if !ok {
-		AbortDetail(c, http.StatusNotFound, "job not found")
+		AbortDetail(c, http.StatusNotFound, d.jobNotFoundDetail(c.Param("job_id")))
 		return
 	}
 	body := gin.H{"job_id": c.Param("job_id"), "kind": kind.Kind, "task_id": nil}

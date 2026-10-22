@@ -251,3 +251,31 @@ func TestCheckTaskCRUDAndTrigger(t *testing.T) {
 	_, hasStats := detail["live"].(map[string]any)["stats"]
 	assert.False(t, hasStats, "check live never carries stats")
 }
+
+// TestRunLiveOwnedByAnotherNode: a run submitted by another node has no
+// queryable local job (rclone job ids are per-rcd) — the detail must say
+// where the progress lives instead of echoing a bogus local "job not
+// found" error.
+func TestRunLiveOwnedByAnotherNode(t *testing.T) {
+	d, r, admin, _, _, _ := tasksEnv(t)
+	task := database.SyncTask{Name: "remote", SrcDataSourceID: 1, DstDataSourceID: 2,
+		SrcPath: "/x", DstPath: "/y", Mode: database.ModeSync, Cron: "0 3 * * *",
+		Enabled: true, RcloneOptions: database.JSONObject{}}
+	require.NoError(t, d.DB.Create(&task).Error)
+
+	// Simulate a run submitted by nodeB while this process serves as nodeA.
+	jobID := int64(7)
+	run := database.SyncRun{TaskID: task.ID, NodeID: "nodeB", JobID: &jobID,
+		Status: database.RunRunning, Trigger: database.TriggerManual}
+	require.NoError(t, d.DB.Create(&run).Error)
+	d.NodeID = "nodeA"
+
+	w := doJSON(r, http.MethodGet, "/api/runs/"+itoa(int(run.ID)), admin, nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	var detail map[string]any
+	require.NoError(t, unmarshalBody(w, &detail))
+	live := detail["live"].(map[string]any)
+	assert.Equal(t, "nodeB", live["node_id"])
+	assert.Contains(t, live["error"], "nodeB", "explains where the progress lives")
+	assert.Nil(t, live["status"], "no local rclone query for a remote job")
+}

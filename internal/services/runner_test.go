@@ -55,7 +55,7 @@ func runnerEnv(t *testing.T) (*gorm.DB, *rclone.Client, *rctest.Server, *databas
 func TestRunTaskSuccess(t *testing.T) {
 	db, client, srv, task := runnerEnv(t)
 
-	run, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	run, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	require.Equal(t, database.RunRunning, run.Status)
 	require.NotNil(t, run.JobID)
@@ -92,11 +92,11 @@ func TestRunTaskSuccess(t *testing.T) {
 func TestRunTaskConcurrencyGuardSkips(t *testing.T) {
 	db, client, _, task := runnerEnv(t)
 
-	first, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	first, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	require.Equal(t, database.RunRunning, first.Status)
 
-	second, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	second, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	assert.Equal(t, database.RunSkipped, second.Status)
 	assert.Equal(t, "previous run still running", *second.Error)
@@ -107,7 +107,7 @@ func TestRunTaskStartFailure(t *testing.T) {
 	db, client, srv, task := runnerEnv(t)
 	srv.FailNext("/sync/sync", 500, map[string]any{"error": "bucket missing"})
 
-	run, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	run, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	assert.Equal(t, database.RunFailed, run.Status)
 	require.NotNil(t, run.Error)
@@ -119,7 +119,7 @@ func TestRunTaskStartFailure(t *testing.T) {
 
 func TestPollRunFailureEmbedsJobStatus(t *testing.T) {
 	db, client, srv, task := runnerEnv(t)
-	run, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	run, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 
 	srv.QueueJobStatus(*run.JobID, rctest.FinishedError(*run.JobID, "sync failed: NoSuchBucket"))
@@ -133,18 +133,88 @@ func TestPollRunFailureEmbedsJobStatus(t *testing.T) {
 
 func TestPollRunningRunsAdvancesAll(t *testing.T) {
 	db, client, srv, task := runnerEnv(t)
-	run, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	run, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	srv.QueueJobStatus(*run.JobID, rctest.Running(*run.JobID), rctest.FinishedSuccess(*run.JobID))
 
-	PollRunningRuns(db, client)
+	PollRunningRuns(db, client, "nodeA")
 	var after database.SyncRun
 	require.NoError(t, db.First(&after, run.ID).Error)
 	assert.Equal(t, database.RunRunning, after.Status, "first poll: still running")
 
-	PollRunningRuns(db, client)
+	PollRunningRuns(db, client, "nodeA")
 	require.NoError(t, db.First(&after, run.ID).Error)
 	assert.Equal(t, database.RunSuccess, after.Status, "second poll: finished")
+}
+
+// TestPollRunningRunsSkipsOtherNodesRuns is the multi-node regression: the
+// standby's poll job must never touch runs submitted elsewhere — its rcd
+// cannot know that job id and would mark the run failed "job not found"
+// while the transfer is still running on the owning node.
+func TestPollRunningRunsSkipsOtherNodesRuns(t *testing.T) {
+	db, client, srv, task := runnerEnv(t)
+	run, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
+	require.NoError(t, err)
+	srv.QueueJobStatus(*run.JobID, rctest.FinishedSuccess(*run.JobID))
+
+	PollRunningRuns(db, client, "nodeB")
+	var after database.SyncRun
+	require.NoError(t, db.First(&after, run.ID).Error)
+	assert.Equal(t, database.RunRunning, after.Status, "other nodes never touch this run")
+	assert.Equal(t, "nodeA", after.NodeID)
+
+	PollRunningRuns(db, client, "nodeA")
+	require.NoError(t, db.First(&after, run.ID).Error)
+	assert.Equal(t, database.RunSuccess, after.Status, "owning node advances it")
+}
+
+// TestPollRunningRunsClaimsUnownedRows: legacy rows (created before node
+// attribution) are claimed by the first poller so exactly one node polls
+// them.
+func TestPollRunningRunsClaimsUnownedRows(t *testing.T) {
+	db, client, srv, task := runnerEnv(t)
+	run, err := RunTask(db, client, "", 3600, task.ID, database.TriggerManual)
+	require.NoError(t, err)
+	srv.QueueJobStatus(*run.JobID, rctest.FinishedSuccess(*run.JobID))
+
+	PollRunningRuns(db, client, "nodeB")
+	var after database.SyncRun
+	require.NoError(t, db.First(&after, run.ID).Error)
+	assert.Equal(t, "nodeB", after.NodeID, "first poller claims unowned rows")
+	assert.Equal(t, database.RunSuccess, after.Status)
+}
+
+// TestPollRunTransientErrorRetries: an unhealthy rcd (5xx / unreachable) is
+// not proof the job failed — the run stays running and is polled again.
+func TestPollRunTransientErrorRetries(t *testing.T) {
+	db, client, srv, task := runnerEnv(t)
+	run, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
+	require.NoError(t, err)
+
+	srv.FailNext("/job/status", 500, map[string]any{"error": "rcd restarting"})
+	polled, err := PollRun(db, client, run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, database.RunRunning, polled.Status, "transient error keeps the run alive")
+
+	srv.QueueJobStatus(*run.JobID, rctest.FinishedSuccess(*run.JobID))
+	polled, err = PollRun(db, client, run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, database.RunSuccess, polled.Status)
+}
+
+// TestPollRunJobGoneIsTerminal: a definitive 404 (job expired / rcd
+// restarted) still finalizes the run as failed.
+func TestPollRunJobGoneIsTerminal(t *testing.T) {
+	db, client, srv, task := runnerEnv(t)
+	run, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
+	require.NoError(t, err)
+
+	srv.FailNext("/job/status", 404, map[string]any{"error": "job not found"})
+	polled, err := PollRun(db, client, run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, database.RunFailed, polled.Status)
+	require.NotNil(t, polled.Error)
+	assert.Contains(t, *polled.Error, "job not found")
 }
 
 func TestJoinDSPath(t *testing.T) {
@@ -192,7 +262,7 @@ func TestRunTaskLocalPrefixBakesIntoFsSpec(t *testing.T) {
 		"src_data_source_id": dsL.ID, "dst_data_source_id": dsL.ID,
 	}).Error)
 
-	run, err := RunTask(db, client, 3600, task.ID, database.TriggerManual)
+	run, err := RunTask(db, client, "nodeA", 3600, task.ID, database.TriggerManual)
 	require.NoError(t, err)
 	require.Equal(t, database.RunRunning, run.Status)
 

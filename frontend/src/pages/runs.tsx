@@ -317,6 +317,11 @@ function RunDetailSheet({ runId, onClose }: { runId: number; onClose: () => void
                 {live.transferring[0].name}
               </p>
             )}
+            {run?.live?.error && (
+              <p className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                {run.live.error}
+              </p>
+            )}
           </div>
         )}
 

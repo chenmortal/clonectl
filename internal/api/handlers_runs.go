@@ -248,6 +248,13 @@ func (d *Deps) liveStats(client *rclone.Client, jobID int64) gin.H {
 	return gin.H{"status": status}
 }
 
+// ownedElsewhere reports whether this run's rclone job lives in another
+// node's rcd — the RC job id is per-rcd, so a local query can never see it
+// (it would answer "job not found", or worse, hit a same-id local job).
+func (d *Deps) ownedElsewhere(nodeID string) bool {
+	return nodeID != "" && d.NodeID != "" && nodeID != d.NodeID
+}
+
 // GetSyncRun — running runs carry the live payload.
 func (d *Deps) GetSyncRun(c *gin.Context) {
 	var run database.SyncRun
@@ -258,9 +265,22 @@ func (d *Deps) GetSyncRun(c *gin.Context) {
 	out := toRunOut(&run)
 	out["live"] = nil
 	if run.Status == database.RunRunning && run.JobID != nil && d.RC != nil {
-		out["live"] = d.liveStats(d.RC, *run.JobID)
+		if d.ownedElsewhere(run.NodeID) {
+			out["live"] = remoteNodeLive(run.NodeID)
+		} else {
+			out["live"] = d.liveStats(d.RC, *run.JobID)
+		}
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+// remoteNodeLive is the live payload for a run owned by another node: no
+// local rclone query, tell the UI which node has the progress.
+func remoteNodeLive(nodeID string) gin.H {
+	return gin.H{
+		"node_id": nodeID,
+		"error":   "该运行由节点 " + nodeID + " 提交，实时进度请在该节点查看",
+	}
 }
 
 // GetCheckRun — live carries only job status (no stats merge).
@@ -273,7 +293,9 @@ func (d *Deps) GetCheckRun(c *gin.Context) {
 	out := toCheckOut(&run)
 	out["live"] = nil
 	if run.Status == database.RunRunning && run.JobID != nil && d.RC != nil {
-		if status, err := d.RC.JobStatus(*run.JobID); err == nil {
+		if d.ownedElsewhere(run.NodeID) {
+			out["live"] = remoteNodeLive(run.NodeID)
+		} else if status, err := d.RC.JobStatus(*run.JobID); err == nil {
 			out["live"] = gin.H{"status": status}
 		} else {
 			out["live"] = gin.H{"error": err.Error()}

@@ -36,7 +36,8 @@ func toRunOut(r *database.SyncRun) gin.H {
 	}
 	return gin.H{
 		"id": r.ID, "task_id": r.TaskID, "job_id": intNil(r.JobID),
-		"status": r.Status, "trigger": r.Trigger,
+		"node_id": r.NodeID,
+		"status":  r.Status, "trigger": r.Trigger,
 		"started_at": NaiveUTCPtr(r.StartedAt), "finished_at": NaiveUTCPtr(r.FinishedAt),
 		"error": strNil(r.Error), "stats": stats,
 	}
@@ -49,7 +50,8 @@ func toCheckOut(r *database.CheckRun) gin.H {
 	}
 	return gin.H{
 		"id": r.ID, "task_id": r.TaskID, "job_id": intNil(r.JobID),
-		"status": r.Status, "trigger": r.Trigger,
+		"node_id": r.NodeID,
+		"status":  r.Status, "trigger": r.Trigger,
 		"started_at": NaiveUTCPtr(r.StartedAt), "finished_at": NaiveUTCPtr(r.FinishedAt),
 		"error": strNil(r.Error), "result": result,
 	}
@@ -436,7 +438,7 @@ func (d *Deps) TriggerTask(c *gin.Context) {
 		AbortDetail(c, http.StatusServiceUnavailable, "rclone client not available")
 		return
 	}
-	run, err := services.RunTask(d.DB, d.RC, d.Cfg.CheckTimeout, task.ID, database.TriggerManual)
+	run, err := services.RunTask(d.DB, d.RC, d.NodeID, d.Cfg.CheckTimeout, task.ID, database.TriggerManual)
 	if err != nil {
 		AbortDetail(c, http.StatusInternalServerError, err.Error())
 		return
