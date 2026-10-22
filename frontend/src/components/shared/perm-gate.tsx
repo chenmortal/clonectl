@@ -1,5 +1,3 @@
-import * as React from "react";
-
 import { canAtLeast, type ResourcePermission } from "@/lib/types";
 
 /**

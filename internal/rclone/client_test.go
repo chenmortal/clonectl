@@ -3,7 +3,6 @@ package rclone
 import (
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -58,24 +57,14 @@ func TestStartSyncSplitsFilterOptions(t *testing.T) {
 	rec := srv.Records()[0]
 	cfg, ok := rec.Body["_config"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "Transfers", keyOf(cfg, float64(8)))
-	assert.Equal(t, "DryRun", keyOf(cfg, true))
-	assert.Equal(t, "what_is_this", keyOf(cfg, true, "DryRun"))
+	assert.EqualValues(t, 8, cfg["Transfers"])
+	assert.Equal(t, true, cfg["DryRun"])
+	assert.Equal(t, true, cfg["what_is_this"], "unknown keys stay in _config for rclone to drop")
 
 	flt, ok := rec.Body["_filter"].(map[string]any)
 	require.True(t, ok, "filter keys must ride in _filter")
-	assert.Equal(t, "MinSize", keyOf(flt, "1M"))
-	assert.Equal(t, "MaxAge", keyOf(flt, "24h"))
-}
-
-// keyOf finds the map key holding want (skipping skip keys); fails via t if absent.
-func keyOf(m map[string]any, want any, skip ...string) string {
-	for k, v := range m {
-		if !slices.Contains(skip, k) && assert.ObjectsAreEqual(want, v) {
-			return k
-		}
-	}
-	return "<missing>"
+	assert.Equal(t, "1M", flt["MinSize"])
+	assert.Equal(t, "24h", flt["MaxAge"])
 }
 
 // backend 级选项(upload_cutoff 等)不得混入 _config/_filter(rclone 会静默
@@ -100,8 +89,8 @@ func TestStartSyncRoutesBackendOptionsToFsSpec(t *testing.T) {
 	// backend 桶不得泄漏进 _config/_filter。
 	cfg, ok := rec.Body["_config"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "IgnoreChecksum", keyOf(cfg, true))
-	assert.Equal(t, "<missing>", keyOf(cfg, "0"), "upload_cutoff must not ride in _config")
+	assert.Equal(t, true, cfg["IgnoreChecksum"])
+	assert.NotContains(t, cfg, "upload_cutoff", "upload_cutoff must not ride in _config")
 	_, hasFilter := rec.Body["_filter"]
 	assert.False(t, hasFilter)
 }
