@@ -2,12 +2,18 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import * as React from "react";
 
 import { InfoTip } from "@/components/shared/info-tip";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { RCLONE_OPTION_DEFS, RCLONE_OPTION_GROUPS, type RcloneOptionDef } from "@/lib/rclone-options";
+import {
+  APPEND_SAFE_RECIPE,
+  RCLONE_OPTION_DEFS,
+  RCLONE_OPTION_GROUPS,
+  type RcloneOptionDef,
+} from "@/lib/rclone-options";
 
 const CATALOG_KEYS = new Set(RCLONE_OPTION_DEFS.map((d) => d.key));
 
@@ -72,6 +78,15 @@ export function RcloneOptionsField({
     });
   };
 
+  // 一键套用追加写/变动中数据配方:只补缺,不覆盖用户已设的值。
+  const applyAppendRecipe = () => {
+    write((obj) => {
+      for (const [k, v] of Object.entries(APPEND_SAFE_RECIPE)) {
+        if (!(k in obj)) obj[k] = v;
+      }
+    });
+  };
+
   const extraText = parsed.ok
     ? JSON.stringify(Object.fromEntries(extraKeys.map((k) => [k, parsed.obj[k]])), null, 2)
     : value;
@@ -103,6 +118,22 @@ export function RcloneOptionsField({
           <span className="ml-1 text-destructive">当前 JSON 不合法,修正前参数不会生效。</span>
         )}
       </p>
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={applyAppendRecipe}
+        >
+          套用追加写数据推荐参数
+        </Button>
+        <InfoTip title="追加写/实时变动数据(OSS AppendObject)">
+          {
+            "源端对象持续被追加写、报告的哈希(如 OSS AppendObject 的 ETag)不可信时使用。一键填入 upload_cutoff=0(强制分片上传,每个分片的 MD5 由 rclone 从实际发送字节计算,避免目标端 BadDigest 拒绝)与 ignore_checksum=true(跳过传输后 hash/大小自检);已设的值不会被覆盖。建议另配 min_age(如 5m)只同步已停止追加的文件。"
+          }
+        </InfoTip>
+      </div>
       {RCLONE_OPTION_GROUPS.map((group) => {
         const defs = RCLONE_OPTION_DEFS.filter((d) => d.group === group);
         if (defs.length === 0) return null;

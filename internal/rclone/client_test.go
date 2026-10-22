@@ -46,10 +46,10 @@ func TestStartSyncSplitsFilterOptions(t *testing.T) {
 	c := newTestClient(t, srv)
 
 	options := map[string]any{
-		"transfers":   float64(8),
-		"dry_run":     true,
-		"min_size":    "1M",
-		"max_age":     "24h",
+		"transfers":    float64(8),
+		"dry_run":      true,
+		"min_size":     "1M",
+		"max_age":      "24h",
 		"what_is_this": true, // 未知键:原样进 _config,由 rclone 决定去留
 	}
 	_, err := c.StartSync("a", "b", "copy", options)
@@ -76,6 +76,95 @@ func keyOf(m map[string]any, want any, skip ...string) string {
 		}
 	}
 	return "<missing>"
+}
+
+// backend 级选项(upload_cutoff 等)不得混入 _config/_filter(rclone 会静默
+// 丢弃),必须按作用端拼进 fs spec 覆盖段。
+func TestStartSyncRoutesBackendOptionsToFsSpec(t *testing.T) {
+	srv := rctest.New()
+	defer srv.Close()
+	c := newTestClient(t, srv)
+
+	options := map[string]any{
+		"upload_cutoff":    "0",
+		"disable_checksum": true,
+		"ignore_checksum":  true, // 对照:ConfigInfo 字段仍走 _config
+	}
+	_, err := c.StartSync("ds-1:/data", "ds-2:/backup", "copy", options)
+	require.NoError(t, err)
+
+	rec := srv.Records()[0]
+	// dst 端覆盖项拼进 dstFs;srcFs 不受影响。
+	assert.Equal(t, "ds-2,disable_checksum=true,upload_cutoff=0:/backup", rec.Body["dstFs"])
+	assert.Equal(t, "ds-1:/data", rec.Body["srcFs"])
+	// backend 桶不得泄漏进 _config/_filter。
+	cfg, ok := rec.Body["_config"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "IgnoreChecksum", keyOf(cfg, true))
+	assert.Equal(t, "<missing>", keyOf(cfg, "0"), "upload_cutoff must not ride in _config")
+	_, hasFilter := rec.Body["_filter"]
+	assert.False(t, hasFilter)
+}
+
+func TestBuildFsSpec(t *testing.T) {
+	// 拼接 + 键排序确定性。
+	got, err := buildFsSpec("ds-2:/backup", map[string]string{"upload_cutoff": "0", "disable_checksum": "true"})
+	require.NoError(t, err)
+	assert.Equal(t, "ds-2,disable_checksum=true,upload_cutoff=0:/backup", got)
+
+	// 无覆盖项:原样返回。
+	got, err = buildFsSpec("ds-2:/backup", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ds-2:/backup", got)
+
+	// 纯本地路径没有 remote 可挂选项:覆盖项无害丢弃。
+	got, err = buildFsSpec("/tmp/pull-back", map[string]string{"upload_cutoff": "0"})
+	require.NoError(t, err)
+	assert.Equal(t, "/tmp/pull-back", got)
+
+	// 单字符 remote(Windows 盘符形态)不视为 remote:丢弃覆盖项。
+	got, err = buildFsSpec(`C:\data`, map[string]string{"upload_cutoff": "0"})
+	require.NoError(t, err)
+	assert.Equal(t, `C:\data`, got)
+
+	// 分隔字符会破坏 fs spec 语法:必须报错而不是拼出去。
+	_, err = buildFsSpec("ds-2:/backup", map[string]string{"upload_cutoff": "0:/evil"})
+	require.Error(t, err)
+}
+
+func TestSplitBackendOverridesEncodeValues(t *testing.T) {
+	src, dst, err := splitBackendOverrides(map[string]any{
+		"upload_cutoff":    float64(0),
+		"disable_checksum": true,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, src)
+	assert.Equal(t, map[string]string{"upload_cutoff": "0", "disable_checksum": "true"}, dst)
+
+	// 不支持的值类型必须报错(而非拼出畸形 fs spec)。
+	_, _, err = splitBackendOverrides(map[string]any{"upload_cutoff": map[string]any{"x": 1}})
+	require.Error(t, err)
+}
+
+func TestEncodeOverrideValue(t *testing.T) {
+	for _, tc := range []struct {
+		in   any
+		want string
+	}{
+		{"64M", "64M"},
+		{true, "true"},
+		{3, "3"},
+		{int64(200), "200"},
+		{0.5, "0.5"},
+	} {
+		got, err := encodeOverrideValue(tc.in)
+		require.NoError(t, err, "%v", tc.in)
+		assert.Equal(t, tc.want, got)
+	}
+	for _, bad := range []any{"", "a,b", "a:b", `a\b`, "a b", []string{"x"}} {
+		_, err := encodeOverrideValue(bad)
+		assert.Error(t, err, "%v must be rejected", bad)
+	}
 }
 
 func TestStartSyncCopyMode(t *testing.T) {

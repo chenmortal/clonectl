@@ -286,7 +286,7 @@ curl -X PUT http://localhost:8000/api/storages/1 \
 | mode | enum | 是 | `sync` / `copy` |
 | cron | string | 是 | 5 段 cron 表达式 |
 | enabled | bool | 否 | 默认 `true`；`false` 时调度器不注册该任务 |
-| rclone_options | object | 否 | 附加 rclone 参数，以 `_config` 下发给 RC（等同 curl 调用 sync/sync 的 `_config` 字段）。常用键：`transfers`（并行传输数，默认 4）、`checkers`（并行检查数，默认 8）、`checkFirst`（先检查后传输）、`multiThreadStreams`（多线程下载流，0=关闭）、`s3UploadConcurrency`（S3 上传并发）、`s3ChunkSize`（S3 分片大小，如 "64M"）、`retries`（重试次数，默认 3）、`dryRun`（演练模式）；其余 rclone 参数亦可任意传入 |
+| rclone_options | object | 否 | 附加 rclone 参数（键用 rclone 规范名，如 `dry_run`）。按参数类型经三条通道下发：① 传输行为类（`transfers`、`checkers`、`checksum`、`ignore_checksum`、`retries` 等）→ RC `_config`；② 过滤类（`min_age`、`max_size` 等）→ RC `_filter`；③ 存储端 backend 选项（`upload_cutoff`、`disable_checksum`）→ 目标端 fs spec 覆盖（如 `ds-2,upload_cutoff=0:/backup`）。常用键：`transfers`（并行传输数，默认 4）、`checkers`（并行检查数，默认 8）、`check_first`（先比对后传输）、`retries`（重试次数，默认 3）、`dry_run`（演练模式）、`upload_cutoff`（分片上传阈值，追加写数据设 0）、`ignore_checksum`（跳过传输后校验）；其余 rclone 参数亦可任意传入（未识别的键按 `_config` 下发，由 rclone 决定去留） |
 | pre_check_task_id | int \| null | 否 | 同步前一致性检查任务 id（见 §6 检查任务）。设置后每次同步前先执行该检查：**两端一致 → 跳过本次同步**；**发现差异 → 继续同步**；**检查本身出错/超时 → 阻止同步**（run 记为 skipped 并注明原因） |
 | created_at / updated_at | string(datetime) | 响应 | |
 
@@ -544,3 +544,27 @@ curl -s -X POST http://localhost:8000/api/tasks -H "Content-Type: application/js
 RUN=$(curl -s -X POST http://localhost:8000/api/tasks/1/trigger | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
 curl -s http://localhost:8000/api/runs/$RUN
 ```
+
+---
+
+## 10. 排查：OSS 追加写对象同步失败（BadDigest / checksum 不匹配）
+
+**症状**：源端为阿里云 OSS，部分对象持续被 AppendObject 追加写（实时数据）；同步任务失败，run.error 含 `api error BadDigest: The Content-Md5 you specified did not match what we received`，或 `corrupted on transfer: sizes differ / hashes differ`。
+
+**根因**：
+
+1. AppendObject 对象的 ETag 不是内容 MD5（追加写语义），但格式上仍像 MD5。rclone 单部件上传会把它作为 `Content-Md5` 头发给目标端，目标端校验拒绝（BadDigest）。
+2. 实时变动的对象在传输过程中还在增长，传输后 hash/大小自检必然不一致。
+
+**配方**（任务的 `rclone_options`）：
+
+```json
+{"upload_cutoff": "0", "ignore_checksum": true, "min_age": "5m"}
+```
+
+- `upload_cutoff: "0"`：所有对象强制分片上传，每个分片的 Content-Md5 由 rclone 从实际发送的字节计算，伪 ETag 不会上行（解决 BadDigest）。
+- `ignore_checksum: true`：跳过传输后 hash/大小自检（解决变动中对象的 corrupted on transfer 误报）。
+- `min_age: "5m"`（可选）：只同步 5 分钟前修改过的文件——正在追加写的活跃对象先跳过，等它停止追加后再由后续任务同步，保证目标端拿到完整内容。
+
+注意：`disable_checksum` 无法解决此问题——它只控制对象元数据里的 MD5，rclone v1.75 单部件上传仍会发出 `Content-Md5` 头。
+

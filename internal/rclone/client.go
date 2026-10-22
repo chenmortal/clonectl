@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -182,12 +184,48 @@ var (
 	}
 )
 
-// splitRcloneOptions 按规范名把选项分成 _config 与 _filter 两份(键已翻译)。
+// sideSpec 标注 backend 覆盖项拼接到哪个 fs spec。
+type sideSpec uint8
+
+const (
+	sideDst sideSpec = iota // 默认:写入/上传侧(upload_cutoff 等)
+	sideSrc                 // 读取/列举侧(如 list_version,预留)
+)
+
+// backendOpt 是 rcloneBackendWire 的值:backend 选项名 + 作用端。
+// backend 选项没有 Go 字段名需要翻译——fs spec 覆盖语法用的就是选项名
+// 本身(实测 upload_cutoff=zzz 报 fs.SizeSuffix 解析错误);name 字段仅为
+// 规范名与选项名不一致的特殊情形留位。
+type backendOpt struct {
+	name string
+	side sideSpec
+}
+
+// rcloneBackendWire 收录 backend 级选项(如 s3 的 upload_cutoff):它们
+// 不是 fs.ConfigInfo/filter.Options 字段,落进 _config/_filter 会被 rclone
+// 静默丢弃(实测 v1.75.1:传非法类型都不报错,说明键根本不存在于结构体),
+// 必须经 fs spec 覆盖语法 "remote,opt=value:path" 按调用下发。
+// 注意:disable_checksum 只控制对象元数据里的 MD5,并不能阻止 v1.75 单部件
+// PutObject 发出的 Content-Md5 头(伪 ETag 场景的 BadDigest 要靠
+// upload_cutoff=0 强制 multipart 解决),收录它仅为把键放对位置。
+var rcloneBackendWire = map[string]backendOpt{
+	"upload_cutoff":    {name: "upload_cutoff", side: sideDst},
+	"disable_checksum": {name: "disable_checksum", side: sideDst},
+}
+
+// splitRcloneOptions 按规范名把选项分成三份:config(_config)、
+// filter(_filter) 与 backend(fs spec 覆盖,见 rcloneBackendWire 注释)。
+// backend 桶键为规范名、值原样保留,作用端在 splitBackendOverrides 查表。
 // 不认识的键原样落入 _config:rclone 会忽略未知键,与旧行为一致。
-func splitRcloneOptions(options map[string]any) (config, filter map[string]any) {
+func splitRcloneOptions(options map[string]any) (config, filter, backend map[string]any) {
 	config = map[string]any{}
 	filter = map[string]any{}
+	backend = map[string]any{}
 	for k, v := range options {
+		if _, ok := rcloneBackendWire[k]; ok {
+			backend[k] = v
+			continue
+		}
 		if w, ok := rcloneFilterWire[k]; ok {
 			filter[w] = v
 			continue
@@ -198,12 +236,116 @@ func splitRcloneOptions(options map[string]any) (config, filter map[string]any) 
 		}
 		config[k] = v
 	}
-	return config, filter
+	return config, filter, backend
+}
+
+// splitBackendOverrides 把 backend 桶编码成 (src, dst) 两份
+// "选项名=值" 覆盖表,供 buildFsSpec 拼进对应端的 fs spec。
+func splitBackendOverrides(backend map[string]any) (src, dst map[string]string, err error) {
+	src = map[string]string{}
+	dst = map[string]string{}
+	for k, v := range backend {
+		opt, ok := rcloneBackendWire[k]
+		if !ok {
+			return nil, nil, fmt.Errorf("unknown backend option %q", k)
+		}
+		val, err := encodeOverrideValue(v)
+		if err != nil {
+			return nil, nil, fmt.Errorf("option %q: %w", k, err)
+		}
+		if opt.side == sideSrc {
+			src[opt.name] = val
+		} else {
+			dst[opt.name] = val
+		}
+	}
+	return src, dst, nil
+}
+
+// encodeOverrideValue 把选项值转成 fs spec 覆盖段的字符串形式,并用白名单
+// 校验字符——值来自任务配置,不能信任;含 ",:=\\" 等分隔字符会破坏
+// "remote,opt=value:path" 语法。大小/时长类值(0、64M、200M)均满足。
+func encodeOverrideValue(v any) (string, error) {
+	var s string
+	switch t := v.(type) {
+	case string:
+		s = t
+	case bool:
+		s = strconv.FormatBool(t)
+	case int:
+		s = strconv.Itoa(t)
+	case int64:
+		s = strconv.FormatInt(t, 10)
+	case float64:
+		s = strconv.FormatFloat(t, 'f', -1, 64)
+	default:
+		return "", fmt.Errorf("unsupported value type %T", v)
+	}
+	if s == "" {
+		return "", fmt.Errorf("empty value")
+	}
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '.' || r == '_' || r == '+' || r == '-') {
+			return "", fmt.Errorf("value %q contains characters not allowed in fs spec", s)
+		}
+	}
+	return s, nil
+}
+
+// buildFsSpec 把覆盖项拼进 fs spec:"ds-2:/backup" →
+// "ds-2,upload_cutoff=0:/backup"。仅当 fs 形如 "remote:path"(remote 名只
+// 含安全字符且至少两字符,排除 Windows 盘符)时附加;纯本地路径(如 e2e 的
+// pull-back 目标)没有 remote 可挂选项,覆盖项按无害丢弃。多个覆盖项按键
+// 排序保证输出确定。
+func buildFsSpec(fs string, overrides map[string]string) (string, error) {
+	if len(overrides) == 0 {
+		return fs, nil
+	}
+	for _, v := range overrides {
+		if _, err := encodeOverrideValue(v); err != nil {
+			return "", err
+		}
+	}
+	remote, path, ok := strings.Cut(fs, ":")
+	if !ok || !validRemoteName(remote) {
+		return fs, nil
+	}
+	keys := make([]string, 0, len(overrides))
+	for k := range overrides {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(remote)
+	for _, k := range keys {
+		b.WriteString(",")
+		b.WriteString(k)
+		b.WriteString("=")
+		b.WriteString(overrides[k])
+	}
+	b.WriteString(":")
+	b.WriteString(path)
+	return b.String(), nil
+}
+
+func validRemoteName(name string) bool {
+	if len(name) < 2 {
+		return false
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // StartSync submits sync/copy as an async job and returns the jobid.
-// options 的键使用 rclone 规范名(如 dry_run、min_size),这里拆分并翻译后
-// 分别通过 _config / _filter 传递(见 rcloneConfigWire 注释)。
+// options 的键使用 rclone 规范名(如 dry_run、min_size):_config/_filter
+// 两份翻译后随请求体下发,backend 级选项(如 upload_cutoff)按作用端拼进
+// srcFs/dstFs 的 fs spec 覆盖段(见 rcloneBackendWire 注释)。
 func (c *Client) StartSync(srcFs, dstFs, mode string, options map[string]any) (int64, error) {
 	path := "/sync/copy"
 	if mode == "sync" {
@@ -211,7 +353,21 @@ func (c *Client) StartSync(srcFs, dstFs, mode string, options map[string]any) (i
 	}
 	payload := map[string]any{"srcFs": srcFs, "dstFs": dstFs, "_async": true}
 	if len(options) > 0 {
-		config, filter := splitRcloneOptions(options)
+		config, filter, backend := splitRcloneOptions(options)
+		srcOverrides, dstOverrides, err := splitBackendOverrides(backend)
+		if err != nil {
+			return 0, &APIError{Msg: fmt.Sprintf("rclone options invalid: %v", err)}
+		}
+		srcSpec, err := buildFsSpec(srcFs, srcOverrides)
+		if err != nil {
+			return 0, &APIError{Msg: fmt.Sprintf("rclone options invalid: %v", err)}
+		}
+		dstSpec, err := buildFsSpec(dstFs, dstOverrides)
+		if err != nil {
+			return 0, &APIError{Msg: fmt.Sprintf("rclone options invalid: %v", err)}
+		}
+		payload["srcFs"] = srcSpec
+		payload["dstFs"] = dstSpec
 		if len(config) > 0 {
 			payload["_config"] = config
 		}

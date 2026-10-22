@@ -69,6 +69,16 @@ export const RCLONE_OPTION_DEFS: RcloneOptionDef[] = [
     default: "关闭(边比对边传输)",
     effect: "开启:进度更可预测、传输更连续,但开始传输前的等待更久;关闭:尽快开始传数据。",
   },
+  {
+    key: "upload_cutoff",
+    label: "upload_cutoff 分片上传阈值",
+    group: "性能",
+    type: "size",
+    placeholder: "0",
+    help: "存储端选项(作用于目标存储):大于该大小的对象改用分片上传;设 0 表示所有对象都分片上传。",
+    default: "200M",
+    effect: "设 0:每个分片的 MD5 由 rclone 从实际发送的字节计算,不依赖源端哈希——源端哈希不可信(如阿里云 OSS 追加写对象的 ETag)时必须设 0,否则目标端会因 Content-Md5 不匹配拒绝上传(BadDigest);调高:小对象走单次上传更快,但依赖源端哈希正确。",
+  },
 
   // --- 带宽与请求频率 ---------------------------------------------------
   {
@@ -119,6 +129,15 @@ export const RCLONE_OPTION_DEFS: RcloneOptionDef[] = [
     help: "目标端已存在的文件一律跳过,不做任何比对。",
     default: "关闭",
     effect: "开启:增量备份快、绝不覆盖已有文件,但目标端的旧内容/损坏文件不会被修正;关闭:正常比对并覆盖不一致文件。",
+  },
+  {
+    key: "ignore_checksum",
+    label: "ignore_checksum 跳过传输后校验",
+    group: "比对与覆盖",
+    type: "bool",
+    help: "传输完成后跳过两端 hash/大小自检。",
+    default: "关闭(传输后校验)",
+    effect: "开启:传输不再因校验不一致报错,适合源端哈希不可信或同步中仍在追加写的数据(如 OSS AppendObject);关闭:能发现传输损坏,但追加写对象几乎必然误报失败。",
   },
   {
     key: "update",
@@ -219,7 +238,7 @@ export const RCLONE_OPTION_DEFS: RcloneOptionDef[] = [
     placeholder: "1h",
     help: "只处理“至少已存在这么久”的文件(如 1h = 只同步 1 小时前修改的)。",
     default: "不过滤",
-    effect: "调高:跳过正在写入的新文件,避免同步到不完整数据;调低:新文件立即纳入。",
+    effect: "调高:跳过正在写入的新文件,避免同步到不完整数据;追加写/实时变动的数据建议设冻结窗口(如 5m),只同步已停止追加的文件;调低:新文件立即纳入。",
   },
   {
     key: "max_age",
@@ -263,3 +282,15 @@ export const RCLONE_OPTION_GROUPS = [
   "范围与过滤",
   "重试",
 ] as const;
+
+/**
+ * 追加写/实时变动数据(阿里云 OSS AppendObject 等)的推荐配方:
+ * upload_cutoff=0 强制分片上传,每个分片的 Content-Md5 由 rclone 从实际
+ * 发送字节计算,伪 ETag 不会上行(避免 BadDigest);ignore_checksum 跳过
+ * 传输后 hash/大小自检(变动中对象的快照必然对不上)。建议再配合 min_age
+ * 冻结窗口只同步已停止追加的文件。
+ */
+export const APPEND_SAFE_RECIPE: Record<string, string | boolean> = {
+  upload_cutoff: "0",
+  ignore_checksum: true,
+};
