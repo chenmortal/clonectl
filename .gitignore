@@ -39,3 +39,9 @@ dist/web/*
 
 # Claude Code local state
 .claude/
+.mimosa/
+.playwright-mcp/
+.zcode/
+.zcodeignore
+tools/
+.v2c/
