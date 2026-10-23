@@ -2,7 +2,7 @@
 #
 # 本地联调：make debug（后端 :8000 + 前端 vite :5173 并行，Ctrl-C 同退）
 # 正式发布：make release
-#   前端构建(web/dist) → go:embed 内嵌 → CGO_ENABLED=0 交叉编译
+#   前端构建(dist/web) → go:embed 内嵌 → CGO_ENABLED=0 交叉编译
 #   → dist/release/ 下生成 tar.gz(二进制+README+.env.example) + sha256sums.txt
 GO      ?= go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -31,7 +31,7 @@ help: ## 显示各目标说明
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-build: ## 本地调试构建（内嵌当前 web/dist）
+build: ## 本地调试构建（内嵌当前 dist/web）
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o rclone-sync ./cmd/rclone-sync
 
 test: ## 运行全部 Go 测试

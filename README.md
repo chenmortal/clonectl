@@ -18,7 +18,7 @@
 - **主备 HA**：两节点共享 MySQL，DB lease CAS 选举；备机读开放、写返回 503
 - **鉴权**：JWT + 三角色 RBAC（admin/edit/view）+ bootstrap admin
 - **rclone 代理**：`/rclone/*` 反向代理（服务端注入 Basic Auth，读全角色 / 写 admin）
-- **静态分发**：`go:embed` 内嵌 `web/dist`，单二进制部署；`STATIC_DIR` 可覆盖为磁盘目录（开发模式）
+- **静态分发**：`go:embed` 内嵌 `dist/web`，单二进制部署；`STATIC_DIR` 可覆盖为磁盘目录（开发模式）
 
 ## 快速开始
 
@@ -47,7 +47,7 @@ cp .env.example .env    # 按需修改
 | `POLL_INTERVAL_SECONDS` | `10` | 运行中任务结果轮询间隔 |
 | `CHECK_TIMEOUT_SECONDS` | `3600` | 同步前检查阻塞上限 |
 | `API_HOST` / `API_PORT` | `0.0.0.0` / `8000` | API 监听地址 |
-| `STATIC_DIR` | `web/dist` | 磁盘静态目录（优先于内嵌；开发热更新用） |
+| `STATIC_DIR` | `dist/web` | 磁盘静态目录（优先于内嵌；开发热更新用） |
 | `LOG_LEVEL` | `INFO` | DEBUG/WARN/… |
 | `JWT_SECRET` | 占位符 | **生产必填** 32+ 随机字节（`openssl rand -hex 32`），HA 节点必须一致 |
 | `JWT_EXPIRES_MINUTES` / `BCRYPT_ROUNDS` | `480` / `12` | token 有效期 / 密码哈希成本 |

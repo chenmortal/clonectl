@@ -67,7 +67,7 @@ func Load() Settings {
 		APIPort:       envInt("API_PORT", 8000),
 		PIDFile:       envStr("PID_FILE", "rclone-sync.pid"),
 		LogLevel:      envStr("LOG_LEVEL", "INFO"),
-		StaticDir:     envStr("STATIC_DIR", "web/dist"),
+		StaticDir:     envStr("STATIC_DIR", "dist/web"),
 
 		NodeID:            envStr("NODE_ID", ""),
 		ClusterName:       envStr("CLUSTER_NAME", "default"),
