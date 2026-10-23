@@ -8,8 +8,8 @@ rcd.log
 *.pid
 vendor/
 
-# ───────── Node (now under frontend/) ─────────
-frontend/node_modules/
+# ───────── Node ─────────
+node_modules/
 
 # ───────── Python (legacy — safe to keep until full history purge) ─────────
 __pycache__/
