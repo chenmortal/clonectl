@@ -38,9 +38,5 @@ export default defineConfig({
     outDir: "../dist/web",
     emptyOutDir: true,
     chunkSizeWarningLimit: 1200,
-    // vite/rollup preserves the "src/" prefix under outDir; flatten.
-    rollupOptions: {
-      input: path.resolve(__dirname, "src/index.html"),
-    },
   },
 });

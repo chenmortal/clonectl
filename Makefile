@@ -11,6 +11,16 @@ LDFLAGS := -s -w \
 	-X main.version=$(VERSION) \
 	-X main.commit=$(COMMIT)
 
+# 依赖安装跟随 npm 自身配置（项目/用户 .npmrc 或 npm_config_registry），
+# 不硬编码镜像源；lockfile 里的 resolved 主机用 --replace-registry-host=always
+# 归一到当前配置的源，内网私有源可直接拉包。
+#   make NPM_REGISTRY=http://nexus.example/npm/ web-dist  临时指定源
+#   make NPM_INSTALL=0 web-dist                          跳过安装（离线/依赖已就位）
+NPM_REGISTRY ?=
+NPM_INSTALL  ?= 1
+NPM_REGISTRY_FLAG := $(if $(NPM_REGISTRY),--registry=$(NPM_REGISTRY))
+NPM_INSTALL_FLAGS := $(NPM_REGISTRY_FLAG) --replace-registry-host=always
+
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 RELEASE_DIR := dist/release
 
@@ -34,12 +44,12 @@ fmt:
 	gofmt -w internal/ cmd/
 
 web-dist: ## 构建前端 → dist/web（embed 数据源）
-	npm --prefix frontend ci --registry=https://registry.npmmirror.com
+	@if [ "$(NPM_INSTALL)" != "0" ]; then \
+		npm --prefix frontend ci $(NPM_INSTALL_FLAGS); \
+	fi
 	# tsc/vite 都要求当前目录是 frontend/（tsc 用 tsconfig 解析 include，
-	# vite 用 vite.config.ts 解析 outDir）。子 shell 跑构建后扁平化产物。
+	# vite 用 vite.config.ts 解析 outDir）。
 	cd frontend && npm run build
-	# Rollup 保留 "src/" 前缀；embed 期望 dist/web/ 直平结构。
-	mv dist/web/src/* dist/web/ && rmdir dist/web/src 2>/dev/null || true
 	# keep the embed placeholder (emptyOutDir wipes it; a fresh clone needs it)
 	touch dist/web/.gitkeep
 
@@ -49,8 +59,9 @@ debug-backend: ## 后端调试启动（go run serve，API 默认 :8000，仅 API
 	$(GO) run ./cmd/rclone-sync serve
 
 debug-frontend: ## 前端调试启动（vite :5173；/api /rclone /healthz 代理 → :8000，VITE_API_TARGET 可覆盖）
-	@test -d frontend/node_modules || \
-		npm --prefix frontend install --registry=https://registry.npmmirror.com
+	@if [ "$(NPM_INSTALL)" != "0" ] && [ ! -d frontend/node_modules ]; then \
+		npm --prefix frontend install $(NPM_INSTALL_FLAGS); \
+	fi
 	cd frontend && npm run dev
 
 debug: ## 前后端联调：并行起后端(:8000) + 前端(:5173)，Ctrl-C 同退
